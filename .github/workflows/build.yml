@@ -118,7 +118,7 @@ jobs:
           /usr/libexec/PlistBuddy -c 'Set :CFBundleDisplayName Biank' "$RUNNER_TEMP/Biank-Migration-Fixture.app/Contents/Info.plist" || /usr/libexec/PlistBuddy -c 'Add :CFBundleDisplayName string Biank' "$RUNNER_TEMP/Biank-Migration-Fixture.app/Contents/Info.plist"
           codesign --force --deep --sign - "$RUNNER_TEMP/Biank-Migration-Fixture.app"
           BIANK_MIGRATION_FIXTURE_ROOT="$RUNNER_TEMP/biank-migration" "$RUNNER_TEMP/Biank-Migration-Fixture.app/Contents/MacOS/Electron"
-          security find-generic-password -s 'Biank Safe Storage' -a 'Biank' >/dev/null
+          test -f "$RUNNER_TEMP/biank-migration/secrets/vault.key.sealed"
       - name: Verify native vault migration and retained encrypted data
         env:
           BIANK_ELECTRON_USER_DATA: ${{ runner.temp }}/biank-migration/electron-profile

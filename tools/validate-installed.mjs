@@ -39,8 +39,11 @@ try{
   const text=readFileSync(join(root,'logs/engine.log'),'utf8');
   const codes=[...new Set(text.match(/\b(?:ERR_[A-Z_]+|MODULE_NOT_FOUND|EACCES|ENOENT|SQLITE_[A-Z_]+)\b/g)||[])];
   const modules=[...text.matchAll(/Cannot find (?:module|package) ['"]([@a-zA-Z0-9_./-]+)['"]/g)].map(m=>m[1]);
-  console.error(JSON.stringify({nodeStartupErrorCodes:codes,missingPackages:modules}));
+  const classes=[...new Set(text.match(/\b(?:Error|TypeError|ReferenceError|SyntaxError|VaultError|VaultLocked)\b/g)||[])];
+  const symptoms={stdin:/stdin/i.test(text),vault:/vault|llave|bóveda/i.test(text),catalog:/catálogo interno|base.skills|semilla/i.test(text),path:/URL|path|ruta|directorio/i.test(text)};
+  console.error(JSON.stringify({nodeStartupErrorCodes:codes,errorClasses:classes,missingPackages:modules,symptoms}));
  }
+ if(existsSync(join(root,'runtime-phase.json'))){const phase=JSON.parse(readFileSync(join(root,'runtime-phase.json'),'utf8')).phase;if(/^[a-z][a-z0-9_-]{0,40}$/.test(phase||''))console.error(JSON.stringify({lastBootstrapPhase:phase}));}
  throw error;
 }finally{
  if(connection){const owner=randomBytes(32).toString('hex');

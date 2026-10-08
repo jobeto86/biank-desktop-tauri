@@ -234,6 +234,9 @@ async fn start(app: AppHandle) -> Result<(), String> {
             .resource_dir()
             .map_err(|_| "Recursos no disponibles")?
     };
+    // Tauri canonicalizes the installed executable on Windows (\\?\ paths).
+    // Keep a compatible equivalent when crossing into Node and its URL/path APIs.
+    let resources = dunce::simplified(&resources).to_path_buf();
     resources::verify(&resources.join("runtime"))?;
     shell_log("biank-shell: runtime verificado");
     let key = vault::open(&root, development)?;

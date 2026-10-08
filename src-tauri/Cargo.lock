@@ -338,6 +338,7 @@ dependencies = [
  "cbc",
  "cookie",
  "dirs 6.0.0",
+ "dunce",
  "keyring",
  "minisign-verify",
  "pbkdf2",

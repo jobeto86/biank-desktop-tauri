@@ -97,6 +97,19 @@ pub fn valid_identity(value: &Value, instance: &str) -> bool {
         && value["service"] == "biank-desktop"
         && value["nativeInstanceId"] == instance
 }
+fn reserve_local_port(previous: u16, explicit: Option<u16>) -> Result<TcpListener, String> {
+    if let Some(port) = explicit {
+        return TcpListener::bind(("127.0.0.1", port))
+            .map_err(|_| "El puerto local configurado está ocupado".into());
+    }
+    // CP-A530: existing tunnel ingress refers to the installation's saved port.
+    if previous >= 1024 {
+        if let Ok(listener) = TcpListener::bind(("127.0.0.1", previous)) {
+            return Ok(listener);
+        }
+    }
+    TcpListener::bind("127.0.0.1:0").map_err(|_| "No hay puerto local".into())
+}
 impl Supervisor {
     pub async fn start(config: Config, mut key: Option<Vec<u8>>) -> Result<Self, String> {
         let runtime = config.resources.join("runtime");
@@ -114,10 +127,12 @@ impl Supervisor {
             .build()
             .map_err(|_| "HTTP local no disponible")?;
         // Do not adopt or replace an existing writer of another shell/release.
+        let mut previous_port = 0;
         if let Ok(raw) = fs::read(config.root.join("runtime.json")) {
             if let Ok(saved) = serde_json::from_slice::<Value>(&raw) {
                 if let Some(port) = saved["port"].as_u64() {
                     if (1024..=65535).contains(&port) {
+                        previous_port = port as u16;
                         if client
                             .get(format!("http://127.0.0.1:{port}/api/health"))
                             .timeout(Duration::from_secs(1))
@@ -132,7 +147,11 @@ impl Supervisor {
             }
         }
         fs::create_dir_all(config.root.join("logs")).map_err(|_| "No se pudo abrir el almacén")?;
-        let listener = TcpListener::bind("127.0.0.1:0").map_err(|_| "No hay puerto local")?;
+        let explicit = std::env::var("BIANK_DESKTOP_LOCAL_PORT")
+            .ok()
+            .and_then(|p| p.parse::<u16>().ok())
+            .filter(|p| *p >= 1024);
+        let listener = reserve_local_port(previous_port, explicit)?;
         let port = listener
             .local_addr()
             .map_err(|_| "No hay puerto local")?
@@ -275,6 +294,17 @@ impl Supervisor {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn saved_port_survives_restart_and_a_busy_port_is_not_taken_over() {
+        let first = reserve_local_port(0, None).unwrap();
+        let port = first.local_addr().unwrap().port();
+        drop(first);
+        let restarted = reserve_local_port(port, None).unwrap();
+        assert_eq!(restarted.local_addr().unwrap().port(), port);
+        let separate = reserve_local_port(port, None).unwrap();
+        assert_ne!(separate.local_addr().unwrap().port(), port);
+        assert!(reserve_local_port(0, Some(port)).is_err());
+    }
     #[test]
     fn identity_is_bound_to_service_and_instance() {
         let value = json!({"status":"ok","service":"biank-desktop","nativeInstanceId":"own"});
