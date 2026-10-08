@@ -36,3 +36,7 @@ ni sustituyeron instalaciones de clientes.
 Windows rechazó el fixture firmado después de que Git lo convirtiera a CRLF.
 `.gitattributes` conserva sus bytes mediante `-text`; no se relaja la firma.
 El workflow permite repetir Windows sin reconstruir macOS.
+
+El primer NSIS consumió 13 minutos de compresión LZMA (367.91 MiB). Los
+candidatos del updater usan ZLIB para medir la reducción del tiempo de build
+y el incremento de tamaño, conservando los mismos recursos y controles de firma.
