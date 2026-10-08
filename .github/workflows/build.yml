@@ -109,9 +109,10 @@ jobs:
         shell: bash
         run: |
           mkdir -p "$RUNNER_TEMP/biank-migration"
+          node -e 'require("./.core/apps/desktop/desktop/node_modules/electron")'
           ditto .core/apps/desktop/desktop/node_modules/electron/dist/Electron.app "$RUNNER_TEMP/Biank-Migration-Fixture.app"
           /usr/libexec/PlistBuddy -c 'Set :CFBundleName Biank' "$RUNNER_TEMP/Biank-Migration-Fixture.app/Contents/Info.plist"
-          /usr/libexec/PlistBuddy -c 'Set :CFBundleDisplayName Biank' "$RUNNER_TEMP/Biank-Migration-Fixture.app/Contents/Info.plist"
+          /usr/libexec/PlistBuddy -c 'Set :CFBundleDisplayName Biank' "$RUNNER_TEMP/Biank-Migration-Fixture.app/Contents/Info.plist" || /usr/libexec/PlistBuddy -c 'Add :CFBundleDisplayName string Biank' "$RUNNER_TEMP/Biank-Migration-Fixture.app/Contents/Info.plist"
           codesign --force --deep --sign - "$RUNNER_TEMP/Biank-Migration-Fixture.app"
           "$RUNNER_TEMP/Biank-Migration-Fixture.app/Contents/MacOS/Electron" tools/electron-vault-fixture.cjs "$RUNNER_TEMP/biank-migration"
       - name: Verify native vault migration and retained encrypted data
