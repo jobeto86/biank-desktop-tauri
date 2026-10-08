@@ -37,6 +37,7 @@ aes-gcm = "0.10"
 windows-sys = { version = "0.59", features = ["Win32_Security_Cryptography", "Win32_System_Memory", "Win32_Foundation"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
+security-framework = "3.7"
 aes = "0.8"
 cbc = { version = "0.1", features = ["alloc", "block-padding"] }
 pbkdf2 = "0.12"

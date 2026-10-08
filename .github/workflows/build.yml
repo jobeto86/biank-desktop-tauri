@@ -115,6 +115,7 @@ jobs:
           /usr/libexec/PlistBuddy -c 'Set :CFBundleDisplayName Biank' "$RUNNER_TEMP/Biank-Migration-Fixture.app/Contents/Info.plist" || /usr/libexec/PlistBuddy -c 'Add :CFBundleDisplayName string Biank' "$RUNNER_TEMP/Biank-Migration-Fixture.app/Contents/Info.plist"
           codesign --force --deep --sign - "$RUNNER_TEMP/Biank-Migration-Fixture.app"
           "$RUNNER_TEMP/Biank-Migration-Fixture.app/Contents/MacOS/Electron" tools/electron-vault-fixture.cjs "$RUNNER_TEMP/biank-migration"
+          security find-generic-password -s 'Biank Safe Storage' -a 'Biank' >/dev/null
       - name: Verify native vault migration and retained encrypted data
         env:
           BIANK_ELECTRON_USER_DATA: ${{ runner.temp }}/biank-migration/electron-profile
@@ -127,8 +128,10 @@ jobs:
         shell: bash
         run: |
           cargo build --manifest-path src-tauri/Cargo.toml --locked
+          node -e 'require("node:fs").cpSync("src-tauri/runtime",process.env.RUNNER_TEMP+"/Biank-Isolated-Resources/runtime",{recursive:true})'
+          export BIANK_TAURI_TEST_RESOURCE_ROOT="$RUNNER_TEMP/Biank-Isolated-Resources"
           if [[ "$RUNNER_OS" == Windows ]]; then executable=src-tauri/target/debug/biank-desktop.exe; else executable=src-tauri/target/debug/biank-desktop; fi
-          node tools/validate-installed.mjs "$executable" src-tauri/runtime
+          node tools/validate-installed.mjs "$executable" "$BIANK_TAURI_TEST_RESOURCE_ROOT/runtime"
       - name: Build updater-signed artifacts
         if: inputs.signed
         env:

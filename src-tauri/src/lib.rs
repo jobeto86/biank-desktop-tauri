@@ -220,7 +220,15 @@ async fn start(app: AppHandle) -> Result<(), String> {
     shell_log("biank-shell: verificando runtime");
     let (root, development) = data_root()?;
     let resources = if cfg!(debug_assertions) {
-        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        match std::env::var_os("BIANK_TAURI_TEST_RESOURCE_ROOT") {
+            Some(path)
+                if std::env::var_os("BIANK_DATA_ROOT").is_some()
+                    && PathBuf::from(&path).is_absolute() =>
+            {
+                PathBuf::from(path)
+            }
+            _ => PathBuf::from(env!("CARGO_MANIFEST_DIR")),
+        }
     } else {
         app.path()
             .resource_dir()

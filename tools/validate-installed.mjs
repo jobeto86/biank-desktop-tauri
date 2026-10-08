@@ -35,6 +35,12 @@ try{
 }catch(error){
  // Only the Rust shell's controlled bootstrap messages; no engine tokens/logs.
  if(existsSync(join(root,'logs/shell.log')))console.error(readFileSync(join(root,'logs/shell.log'),'utf8'));
+ if(existsSync(join(root,'logs/engine.log'))){
+  const text=readFileSync(join(root,'logs/engine.log'),'utf8');
+  const codes=[...new Set(text.match(/\b(?:ERR_[A-Z_]+|MODULE_NOT_FOUND|EACCES|ENOENT|SQLITE_[A-Z_]+)\b/g)||[])];
+  const modules=[...text.matchAll(/Cannot find (?:module|package) ['"]([@a-zA-Z0-9_./-]+)['"]/g)].map(m=>m[1]);
+  console.error(JSON.stringify({nodeStartupErrorCodes:codes,missingPackages:modules}));
+ }
  throw error;
 }finally{
  if(connection){const owner=randomBytes(32).toString('hex');

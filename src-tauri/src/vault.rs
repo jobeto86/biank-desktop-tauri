@@ -182,13 +182,18 @@ fn unseal_electron(raw: &[u8]) -> Result<Vec<u8>, String> {
     if !raw.starts_with(b"v10") {
         return Err("Formato de llave Electron desconocido; se conserva".into());
     }
-    let entry =
-        keyring::Entry::new("Biank Safe Storage", "Biank").map_err(|_| "Keychain no disponible")?;
-    let mut password = entry
-        .get_password()
-        .map_err(|_| "No se pudo recuperar la identidad Electron de Keychain")?;
+    // Electron uses SecItemCopyMatching across the user's Keychain search list.
+    // Do not constrain the legacy lookup to one default keychain/domain.
+    let mut password =
+        security_framework::passwords::get_generic_password("Biank Safe Storage", "Biank")
+            .map_err(|error| {
+                format!(
+                    "No se pudo recuperar la identidad Electron de Keychain (OSStatus {})",
+                    error.code()
+                )
+            })?;
     let mut key = [0; 16];
-    pbkdf2::pbkdf2_hmac::<sha1::Sha1>(password.as_bytes(), b"saltysalt", 1003, &mut key);
+    pbkdf2::pbkdf2_hmac::<sha1::Sha1>(&password, b"saltysalt", 1003, &mut key);
     password.zeroize();
     let result = cbc::Decryptor::<aes::Aes128>::new(&key.into(), &[b' '; 16].into())
         .decrypt_padded_vec_mut::<Pkcs7>(&raw[3..])

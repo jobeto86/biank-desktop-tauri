@@ -251,12 +251,11 @@ impl Supervisor {
         }
         let deadline = Instant::now() + Duration::from_secs(120);
         while Instant::now() < deadline {
-            if child
+            if let Some(status) = child
                 .try_wait()
                 .map_err(|_| "No se pudo observar el motor")?
-                .is_some()
             {
-                return Err("El motor terminó antes de iniciar. Se conservan tus datos; consulta logs/engine.log.".into());
+                return Err(format!("El motor terminó antes de iniciar (código {:?}). Se conservan tus datos; consulta logs/engine.log.", status.code()));
             }
             if let Ok(health) = connection.request("/api/health", None).await {
                 if valid_identity(&health, &connection.instance) {
