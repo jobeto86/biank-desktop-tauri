@@ -61,6 +61,7 @@ Logs locales: `/tmp/biank-tauri-core-tests.log`,
 5. Validar Electron → Tauri y continuidad del canal `jobeto86/biank-desktop`.
    El workflow actual retiene artefactos; no publica ni promueve latest.
 
-No se configuraron secretos, publicaron releases ni reiniciaron servicios de
-producción. CUR-252, CUR-256, CUR-259 y CUR-260 siguen abiertos: la evidencia
+En este checkpoint inicial no se configuraron secretos, publicaron releases ni
+reiniciaron servicios de producción. La habilitación posterior de CI se registra
+en `docs/candidate-ci-2026-10-08.md`. CUR-252, CUR-256, CUR-259 y CUR-260 siguen abiertos: la evidencia
 local no acredita reparación de la instalación del cliente.

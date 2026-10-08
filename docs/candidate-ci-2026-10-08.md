@@ -1,0 +1,28 @@
+# CI Tauri habilitado — 2026-10-08
+
+Roberto autorizó configurar el grant y la firma («Sí»).
+
+- Deploy key SSH read-only en el core `jobeto86/biank`; el satélite recibe su
+  clave privada mediante `BIANK_CORE_READ_SSH_KEY`. No se copió la sesión OAuth
+  personal de GitHub. Ambos runners acreditaron el checkout privado.
+- Firma updater propia: secreto `TAURI_SIGNING_PRIVATE_KEY` y variable pública
+  `BIANK_TAURI_PUBLIC_KEY`. Copia local de recuperación fuera de los repositorios,
+  directorio 0700 y archivos privados 0600; los valores no se imprimieron.
+- SHA core: `d82d9f6`; rama candidata
+  `candidate/tauri-browser-20261008` en ambos repositorios. Se preservaron los
+  cambios ajenos sin incluirlos en el commit del core.
+- Prueba local de firma PASS: original válido, contenido modificado rechazado,
+  versión 0.3.0 ligada al comentario firmado. El updater exige versión firmada.
+- Regresión adicional: cerrar la ventana real Chromium y reabrirla fallaba;
+  corregido en core d82d9f6 y probado con 25 regresiones PASS. La sesión se conserva.
+- Instalador macOS inicial medido: 571.82 MiB; tar.gz updater 589.06 MiB.
+  El ZIP de Actions incluía también el app sin comprimir (2.6 GB); el workflow
+  conserva ahora sólo los formatos instalables y updater con sus firmas.
+- Build inicial: https://github.com/jobeto86/biank-desktop-tauri/actions/runs/37769690408
+  Estado pendiente de resultado; no equivale a instalador validado.
+
+Electron también permite firma Authenticode/Developer ID. Adoptar Tauri no
+resuelve esas identidades: la firma updater no es un certificado Authenticode ni
+notarización Apple.
+No se aprovisionaron esas identidades, promovieron releases, fusionaron ramas
+ni sustituyeron instalaciones de clientes.

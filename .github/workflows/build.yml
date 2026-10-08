@@ -7,7 +7,7 @@ on:
         required: true
         type: string
       signed:
-        description: Preparar candidato firmado para validar; no publica latest
+        description: Firmar para updater (no certificado Windows/Apple); no publica latest
         type: boolean
         default: false
 permissions:
@@ -25,10 +25,12 @@ jobs:
             target: x86_64-pc-windows-msvc
             cloud_platform: win
             arch: x64
+            bundles: nsis
           - platform: macos-latest
             target: aarch64-apple-darwin
             cloud_platform: mac
             arch: arm64
+            bundles: app,dmg
     runs-on: ${{ matrix.platform }}
     timeout-minutes: 60
     steps:
@@ -54,6 +56,9 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target
       - run: npm ci
       - name: Build exact coordinator and platform runtime
         working-directory: .core/apps/desktop/coordinator
@@ -86,18 +91,23 @@ jobs:
         run: cargo test --manifest-path src-tauri/Cargo.toml --locked
       - name: Build unsigned QA installer
         if: ${{ !inputs.signed }}
-        run: npm run tauri -- build --target ${{ matrix.target }}
-      - name: Build signed update artifacts
+        run: npm run tauri -- build --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
+      - name: Build updater-signed artifacts
         if: inputs.signed
         env:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        run: npm run tauri -- build --target ${{ matrix.target }} --config src-tauri/updater.conf.json
+        run: npm run tauri -- build --target ${{ matrix.target }} --bundles ${{ matrix.bundles }} --config src-tauri/updater.conf.json
       - name: Retain candidate for review
         uses: actions/upload-artifact@v4
         with:
           name: Biank-Tauri-${{ matrix.target }}
-          path: src-tauri/target/${{ matrix.target }}/release/bundle/
+          path: |
+            src-tauri/target/${{ matrix.target }}/release/bundle/nsis/*.exe
+            src-tauri/target/${{ matrix.target }}/release/bundle/nsis/*.sig
+            src-tauri/target/${{ matrix.target }}/release/bundle/dmg/*.dmg
+            src-tauri/target/${{ matrix.target }}/release/bundle/macos/*.tar.gz
+            src-tauri/target/${{ matrix.target }}/release/bundle/macos/*.sig
           if-no-files-found: error
           retention-days: 3
           compression-level: 0
