@@ -43,3 +43,6 @@ sha1 = "0.10"
 
 [profile.dev.package.sha2]
 opt-level = 3
+
+[dev-dependencies]
+minisign-verify = "0.2.5"
