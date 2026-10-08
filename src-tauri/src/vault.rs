@@ -100,13 +100,56 @@ pub fn open(root: &Path, development: bool) -> Result<Option<Vec<u8>>, String> {
 }
 #[cfg(windows)]
 fn unseal_electron(raw: &[u8]) -> Result<Vec<u8>, String> {
+    use aes_gcm::{
+        aead::{Aead, KeyInit},
+        Aes256Gcm, Nonce,
+    };
+    if raw.starts_with(b"v10") {
+        if raw.len() < 3 + 12 + 16 {
+            return Err("Llave Electron truncada; se conservan los datos".into());
+        }
+        let user_data = std::env::var_os("BIANK_ELECTRON_USER_DATA")
+            .map(PathBuf::from)
+            .or_else(|| std::env::var_os("APPDATA").map(|p| PathBuf::from(p).join("Biank")))
+            .filter(|p| p.is_absolute())
+            .ok_or("No se encontró el perfil original de Electron")?;
+        let state: serde_json::Value = serde_json::from_slice(
+            &fs::read(user_data.join("Local State"))
+                .map_err(|_| "No se pudo leer Local State de Electron")?,
+        )
+        .map_err(|_| "Local State de Electron inválido")?;
+        let wrapped = base64::engine::general_purpose::STANDARD
+            .decode(
+                state["os_crypt"]["encrypted_key"]
+                    .as_str()
+                    .ok_or("Falta la llave original de Electron")?,
+            )
+            .map_err(|_| "Llave original de Electron inválida")?;
+        let wrapped = wrapped
+            .strip_prefix(b"DPAPI")
+            .ok_or("Formato original de Electron desconocido")?;
+        let mut key = unprotect_dpapi(wrapped)?;
+        let result = (|| {
+            let cipher = Aes256Gcm::new_from_slice(&key).map_err(|_| "Llave Electron inválida")?;
+            cipher
+                .decrypt(Nonce::from_slice(&raw[3..15]), &raw[15..])
+                .map_err(|_| {
+                    "No se pudo autenticar la llave Electron; se conservan los datos".into()
+                })
+        })();
+        key.zeroize();
+        return result;
+    }
+    unprotect_dpapi(raw.strip_prefix(b"DPAPI").unwrap_or(raw))
+}
+#[cfg(windows)]
+fn unprotect_dpapi(raw: &[u8]) -> Result<Vec<u8>, String> {
     use windows_sys::Win32::{
         Foundation::LocalFree,
         Security::Cryptography::{
             CryptUnprotectData, CRYPTPROTECT_UI_FORBIDDEN, CRYPT_INTEGER_BLOB,
         },
     };
-    let raw = raw.strip_prefix(b"DPAPI").unwrap_or(raw);
     let mut input = CRYPT_INTEGER_BLOB {
         cbData: raw.len() as u32,
         pbData: raw.as_ptr() as *mut u8,

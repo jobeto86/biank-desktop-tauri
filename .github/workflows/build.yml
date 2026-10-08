@@ -68,6 +68,11 @@ jobs:
       - name: Build web interface
         working-directory: .core/apps/desktop/web
         run: npm ci && npm run build
+      - name: Validate real shared Chromium on the target OS
+        working-directory: .core/apps/desktop/coordinator
+        env:
+          PLAYWRIGHT_BROWSERS_PATH: ${{ github.workspace }}/.core/apps/desktop/dist/coordinator-runtime/browsers
+        run: node --experimental-sqlite --import tsx --test test/tauri-browser.integration.ts
       - name: Install pinned official Codex distribution
         working-directory: .core/apps/desktop/desktop/vendor
         run: npm ci --ignore-scripts
@@ -86,6 +91,19 @@ jobs:
         run: npm run configure:updater
       - name: Check native contracts
         run: cargo test --manifest-path src-tauri/Cargo.toml --locked
+      - name: Install exact legacy Electron for synthetic vault migration
+        working-directory: .core/apps/desktop/desktop
+        run: npm ci
+      - name: Generate synthetic Electron vault
+        shell: bash
+        run: |
+          mkdir -p "$RUNNER_TEMP/biank-migration"
+          node -e 'const {spawnSync}=require("node:child_process"); const electron=require("./.core/apps/desktop/desktop/node_modules/electron"); const r=spawnSync(electron,["tools/electron-vault-fixture.cjs",process.env.RUNNER_TEMP+"/biank-migration"],{stdio:"inherit"}); process.exit(r.status ?? 1)'
+      - name: Verify native vault migration and retained encrypted data
+        env:
+          BIANK_ELECTRON_USER_DATA: ${{ runner.temp }}/biank-migration/electron-profile
+          BIANK_DESKTOP_CONFIG_ROOT: ${{ runner.temp }}/biank-migration/config
+        run: cargo run --manifest-path src-tauri/Cargo.toml --locked --example validate_migration -- "${{ runner.temp }}/biank-migration"
       - name: Build unsigned QA installer
         if: ${{ !inputs.signed }}
         run: npm run tauri -- build --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
@@ -95,6 +113,25 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: npm run tauri -- build --target ${{ matrix.target }} --bundles ${{ matrix.bundles }} --config src-tauri/updater.conf.json
+      - name: Install and run actual Windows NSIS candidate
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $installer = (Get-ChildItem 'src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/*.exe').FullName
+          $destination = Join-Path $env:RUNNER_TEMP 'Biank-Installed-QA'
+          $installed = Start-Process -FilePath $installer -ArgumentList '/S',"/D=$destination" -Wait -PassThru
+          if ($installed.ExitCode -ne 0) { throw "NSIS installation failed: $($installed.ExitCode)" }
+          node tools/validate-installed.mjs "$destination/biank-desktop.exe"
+          if ($LASTEXITCODE -ne 0) { throw 'Installed Windows validation failed' }
+      - name: Mount and run actual macOS DMG candidate
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          mount="$RUNNER_TEMP/Biank-DMG-QA"
+          hdiutil attach src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg -nobrowse -mountpoint "$mount"
+          trap 'hdiutil detach "$mount"' EXIT
+          ditto "$mount/Biank.app" "$RUNNER_TEMP/Biank-Installed-QA.app"
+          node tools/validate-installed.mjs "$RUNNER_TEMP/Biank-Installed-QA.app/Contents/MacOS/biank-desktop"
       - name: Retain candidate for review
         uses: actions/upload-artifact@v4
         with:

@@ -264,6 +264,7 @@ async fn start(app: AppHandle) -> Result<(), String> {
                 .build();
             window.set_cookie(cookie)?;
             window.navigate(url)?;
+            eprintln!("biank-shell: ventana principal lista");
             let app = handle.clone();
             window.on_window_event(move |event| {
                 if let tauri::WindowEvent::CloseRequested { api, .. } = event {
