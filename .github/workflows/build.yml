@@ -13,7 +13,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: tauri-candidate-${{ github.ref }}
+  group: tauri-candidate-${{ github.ref }}-${{ inputs.core_sha }}
   cancel-in-progress: false
 jobs:
   build:
