@@ -21,7 +21,7 @@ on:
 permissions:
   contents: read
 concurrency:
-  group: tauri-candidate-${{ github.ref }}-${{ inputs.core_sha }}
+  group: tauri-candidate-${{ github.ref }}-${{ inputs.core_sha }}-${{ inputs.windows_only }}-${{ inputs.macos_only }}
   cancel-in-progress: false
 jobs:
   build:
@@ -122,6 +122,12 @@ jobs:
       - name: Build unsigned QA installer
         if: ${{ !inputs.signed }}
         run: npm run tauri -- build --target ${{ matrix.target }} --bundles ${{ matrix.bundles }}
+      - name: Validate native startup before packaging
+        shell: bash
+        run: |
+          cargo build --manifest-path src-tauri/Cargo.toml --locked
+          if [[ "$RUNNER_OS" == Windows ]]; then executable=src-tauri/target/debug/biank-desktop.exe; else executable=src-tauri/target/debug/biank-desktop; fi
+          node tools/validate-installed.mjs "$executable" src-tauri/runtime
       - name: Build updater-signed artifacts
         if: inputs.signed
         env:

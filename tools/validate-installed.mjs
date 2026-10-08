@@ -23,15 +23,19 @@ try{
   await new Promise(r=>setTimeout(r,500));
  }
  assert.ok(connection,`Installed engine failed; synthetic evidence ${root}`);
- const ui=await fetch(connection.origin+'/',{headers:connection.headers}).then(r=>r.text());
+ const ui=await fetch(connection.origin+'/',{headers:connection.headers,signal:AbortSignal.timeout(10000)}).then(r=>r.text());
  assert.match(ui,/<!doctype html/i);
  const deadlineWindow=Date.now()+30000;
- while(Date.now()<deadlineWindow&&!readFileSync(join(root,'shell.log'),'utf8').includes('biank-shell: ventana principal lista'))await new Promise(r=>setTimeout(r,250));
- assert.match(readFileSync(join(root,'shell.log'),'utf8'),/biank-shell: ventana principal lista/,'Native webview did not initialize');
- const runtime=join(process.platform==='darwin'?resolve(executable,'../../Resources'):resolve(executable,'..'),'runtime');
+ while(Date.now()<deadlineWindow&&(!existsSync(join(root,'logs/shell.log'))||!readFileSync(join(root,'logs/shell.log'),'utf8').includes('biank-shell: ventana principal lista')))await new Promise(r=>setTimeout(r,250));
+ assert.match(readFileSync(join(root,'logs/shell.log'),'utf8'),/biank-shell: ventana principal lista/,'Native webview did not initialize');
+ const runtime=process.argv[3]?resolve(process.argv[3]):join(process.platform==='darwin'?resolve(executable,'../../Resources'):resolve(executable,'..'),'runtime');
  execFileSync(join(runtime,'codex',process.platform==='win32'?'codex.exe':'codex'),['--version'],{stdio:'pipe'});
  console.log(JSON.stringify({status:'PASS',installedEngine:true,nativeWindow:true,bundledCodex:true,evidence:root}));
  writeFileSync(join(root,'result.json'),JSON.stringify({status:'PASS',installedEngine:true,nativeWindow:true,bundledCodex:true})+'\n');
+}catch(error){
+ // Only the Rust shell's controlled bootstrap messages; no engine tokens/logs.
+ if(existsSync(join(root,'logs/shell.log')))console.error(readFileSync(join(root,'logs/shell.log'),'utf8'));
+ throw error;
 }finally{
  if(connection){const owner=randomBytes(32).toString('hex');
   const request=(route,body)=>fetch(connection.origin+route,{method:'POST',headers:connection.headers,body:JSON.stringify(body)});

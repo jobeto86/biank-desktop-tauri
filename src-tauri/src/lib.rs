@@ -22,6 +22,24 @@ use tauri_plugin_shell::ShellExt;
 struct Boot {
     preparing: AtomicBool,
 }
+fn shell_log(message: &str) {
+    use std::io::Write;
+    eprintln!("{message}");
+    // GUI-subsystem Windows binaries have no console. Keep startup evidence in
+    // the installation's own log; callers pass status text, never credentials.
+    if let Ok((root, _)) = data_root() {
+        let directory = root.join("logs");
+        if std::fs::create_dir_all(&directory).is_ok() {
+            if let Ok(mut file) = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(directory.join("shell.log"))
+            {
+                let _ = writeln!(file, "{message}");
+            }
+        }
+    }
+}
 struct Desktop {
     connection: engine::Connection,
     _child: Mutex<Option<std::process::Child>>,
@@ -199,7 +217,7 @@ fn data_root() -> Result<(PathBuf, bool), String> {
     Ok((base.join("Biank"), false))
 }
 async fn start(app: AppHandle) -> Result<(), String> {
-    eprintln!("biank-shell: verificando runtime");
+    shell_log("biank-shell: verificando runtime");
     let (root, development) = data_root()?;
     let resources = if cfg!(debug_assertions) {
         PathBuf::from(env!("CARGO_MANIFEST_DIR"))
@@ -209,8 +227,9 @@ async fn start(app: AppHandle) -> Result<(), String> {
             .map_err(|_| "Recursos no disponibles")?
     };
     resources::verify(&resources.join("runtime"))?;
-    eprintln!("biank-shell: runtime verificado");
+    shell_log("biank-shell: runtime verificado");
     let key = vault::open(&root, development)?;
+    shell_log("biank-shell: llave disponible");
     let supervisor = engine::Supervisor::start(
         engine::Config {
             root,
@@ -221,6 +240,7 @@ async fn start(app: AppHandle) -> Result<(), String> {
         key,
     )
     .await?;
+    shell_log("biank-shell: motor verificado");
     let connection = supervisor.connection.clone();
     app.manage(Desktop {
         connection: supervisor.connection,
@@ -264,7 +284,7 @@ async fn start(app: AppHandle) -> Result<(), String> {
                 .build();
             window.set_cookie(cookie)?;
             window.navigate(url)?;
-            eprintln!("biank-shell: ventana principal lista");
+            shell_log("biank-shell: ventana principal lista");
             let app = handle.clone();
             window.on_window_event(move |event| {
                 if let tauri::WindowEvent::CloseRequested { api, .. } = event {
@@ -280,6 +300,7 @@ async fn start(app: AppHandle) -> Result<(), String> {
             Ok(())
         })();
         if let Err(error) = result {
+            shell_log("biank-shell: no se pudo crear la ventana principal");
             let _ = handle.emit("biank-startup-error", error.to_string());
         }
     })
@@ -301,7 +322,7 @@ pub fn run() {
         .manage(updates::Updates::default())
         .manage(imports::Imports::default())
         .setup(|app| {
-            eprintln!("biank-shell: configurando bandeja");
+            shell_log("biank-shell: configurando bandeja");
             let show = MenuItem::with_id(app, "show", "Abrir Biank", true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "Salir de Biank", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&show, &quit])?;
@@ -325,7 +346,7 @@ pub fn run() {
                     _ => {}
                 })
                 .build(app)?;
-            eprintln!("biank-shell: bandeja lista");
+            shell_log("biank-shell: bandeja lista");
             let updater = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 loop {
@@ -341,7 +362,7 @@ pub fn run() {
                     .preparing
                     .store(false, Ordering::SeqCst);
                 if let Err(error) = result {
-                    eprintln!("biank-shell: {error}");
+                    shell_log(&format!("biank-shell: {error}"));
                     if let Some(window) = handle.get_webview_window("startup") {
                         let script = format!(
                             "document.getElementById('status').textContent={}",
