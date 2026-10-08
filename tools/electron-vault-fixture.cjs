@@ -3,7 +3,7 @@ const {app,safeStorage}=require('electron');
 const {mkdirSync,writeFileSync}=require('node:fs');
 const {join,resolve}=require('node:path');
 const {randomBytes,createCipheriv}=require('node:crypto');
-const root=resolve(process.argv[2]);
+const root=resolve(process.env.BIANK_MIGRATION_FIXTURE_ROOT||process.argv[2]);
 app.setName('Biank');
 app.setPath('userData',join(root,'electron-profile'));
 app.whenReady().then(()=>{

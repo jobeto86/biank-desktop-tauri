@@ -111,10 +111,13 @@ jobs:
           mkdir -p "$RUNNER_TEMP/biank-migration"
           node -e 'require("./.core/apps/desktop/desktop/node_modules/electron")'
           ditto .core/apps/desktop/desktop/node_modules/electron/dist/Electron.app "$RUNNER_TEMP/Biank-Migration-Fixture.app"
+          mkdir -p "$RUNNER_TEMP/Biank-Migration-Fixture.app/Contents/Resources/app"
+          cp tools/electron-vault-fixture.cjs "$RUNNER_TEMP/Biank-Migration-Fixture.app/Contents/Resources/app/fixture.cjs"
+          node -e 'require("node:fs").writeFileSync(process.env.RUNNER_TEMP+"/Biank-Migration-Fixture.app/Contents/Resources/app/package.json",JSON.stringify({name:"biank-desktop",productName:"Biank",version:"0.2.31",main:"fixture.cjs"}))'
           /usr/libexec/PlistBuddy -c 'Set :CFBundleName Biank' "$RUNNER_TEMP/Biank-Migration-Fixture.app/Contents/Info.plist"
           /usr/libexec/PlistBuddy -c 'Set :CFBundleDisplayName Biank' "$RUNNER_TEMP/Biank-Migration-Fixture.app/Contents/Info.plist" || /usr/libexec/PlistBuddy -c 'Add :CFBundleDisplayName string Biank' "$RUNNER_TEMP/Biank-Migration-Fixture.app/Contents/Info.plist"
           codesign --force --deep --sign - "$RUNNER_TEMP/Biank-Migration-Fixture.app"
-          "$RUNNER_TEMP/Biank-Migration-Fixture.app/Contents/MacOS/Electron" tools/electron-vault-fixture.cjs "$RUNNER_TEMP/biank-migration"
+          BIANK_MIGRATION_FIXTURE_ROOT="$RUNNER_TEMP/biank-migration" "$RUNNER_TEMP/Biank-Migration-Fixture.app/Contents/MacOS/Electron"
           security find-generic-password -s 'Biank Safe Storage' -a 'Biank' >/dev/null
       - name: Verify native vault migration and retained encrypted data
         env:
