@@ -116,6 +116,14 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
         run: npm run tauri -- build --target ${{ matrix.target }} --bundles ${{ matrix.bundles }} --config src-tauri/updater.conf.json
+      - name: Verify macOS ad hoc signature before installation
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euo pipefail
+          app="src-tauri/target/${{ matrix.target }}/release/bundle/macos/Biank.app"
+          codesign --verify --deep --strict --verbose=2 "$app"
+          codesign --display --verbose=4 "$app" 2>&1 | grep -Fx 'Signature=adhoc'
       - name: Install and run actual Windows NSIS candidate
         if: runner.os == 'Windows'
         shell: pwsh
@@ -130,10 +138,13 @@ jobs:
         if: runner.os == 'macOS'
         shell: bash
         run: |
+          set -euo pipefail
           mount="$RUNNER_TEMP/Biank-DMG-QA"
           hdiutil attach src-tauri/target/aarch64-apple-darwin/release/bundle/dmg/*.dmg -nobrowse -mountpoint "$mount"
           trap 'hdiutil detach "$mount"' EXIT
           ditto "$mount/Biank.app" "$RUNNER_TEMP/Biank-Installed-QA.app"
+          codesign --verify --deep --strict --verbose=2 "$RUNNER_TEMP/Biank-Installed-QA.app"
+          codesign --display --verbose=4 "$RUNNER_TEMP/Biank-Installed-QA.app" 2>&1 | grep -Fx 'Signature=adhoc'
           node tools/validate-installed.mjs "$RUNNER_TEMP/Biank-Installed-QA.app/Contents/MacOS/biank-desktop"
       - name: Retain candidate for review
         uses: actions/upload-artifact@v4
