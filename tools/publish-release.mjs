@@ -23,7 +23,7 @@ for(const [platform,id,expectedSha] of [['Windows',windowsRun,evidence.windows.s
  const run=JSON.parse(gh(['api',`repos/jobeto86/biank-desktop-tauri/actions/runs/${id}`]));
  assert.equal(run.status,'completed');assert.equal(run.head_sha,expectedSha);
  const jobs=JSON.parse(gh(['api',`repos/jobeto86/biank-desktop-tauri/actions/runs/${id}/jobs`])).jobs;
- const job=jobs.find(j=>j.name.includes(platform==='Windows'?'windows-latest':'macos-latest'));
+ const job=jobs.find(j=>j.name.includes(platform==='Windows'?'x86_64-pc-windows-msvc':'aarch64-apple-darwin'));
  assert.equal(job?.conclusion,'success',`${platform} native validation failed`);
  for(const name of ['Validate real shared Chromium on the target OS','Verify native vault migration and retained encrypted data',platform==='Windows'?'Install and run actual Windows NSIS candidate':'Mount and run actual macOS DMG candidate'])assert.equal(job.steps.find(s=>s.name===name)?.conclusion,'success',name);
 }

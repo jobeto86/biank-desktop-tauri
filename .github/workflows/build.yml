@@ -28,7 +28,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include: ${{ fromJSON(inputs.windows_only && '[{"platform":"windows-latest","target":"x86_64-pc-windows-msvc","cloud_platform":"win","arch":"x64","bundles":"nsis"}]' || inputs.macos_only && '[{"platform":"macos-latest","target":"aarch64-apple-darwin","cloud_platform":"mac","arch":"arm64","bundles":"app,dmg"}]' || '[{"platform":"windows-latest","target":"x86_64-pc-windows-msvc","cloud_platform":"win","arch":"x64","bundles":"nsis"},{"platform":"macos-latest","target":"aarch64-apple-darwin","cloud_platform":"mac","arch":"arm64","bundles":"app,dmg"}]') }}
+        include: ${{ fromJSON(inputs.windows_only && '[{"platform":"windows-latest","target":"x86_64-pc-windows-msvc","cloud_platform":"win","arch":"x64","bundles":"nsis"}]' || inputs.macos_only && '[{"platform":"macos-15","target":"aarch64-apple-darwin","cloud_platform":"mac","arch":"arm64","bundles":"app,dmg"}]' || '[{"platform":"windows-latest","target":"x86_64-pc-windows-msvc","cloud_platform":"win","arch":"x64","bundles":"nsis"},{"platform":"macos-15","target":"aarch64-apple-darwin","cloud_platform":"mac","arch":"arm64","bundles":"app,dmg"}]') }}
     runs-on: ${{ matrix.platform }}
     timeout-minutes: 60
     steps:
@@ -51,6 +51,10 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '22'
+      - name: Require a native platform payload
+        env:
+          EXPECTED_ARCH: ${{ matrix.arch }}
+        run: node -e 'if(process.arch !== process.env.EXPECTED_ARCH)throw Error("Runner architecture does not match the bundled runtime")'
       - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
