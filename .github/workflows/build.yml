@@ -16,8 +16,10 @@ jobs:
         include:
           - platform: 'windows-latest'
             args: ''
+            target: ''
           - platform: 'macos-latest'
             args: '--target aarch64-apple-darwin'
+            target: 'aarch64-apple-darwin'
     runs-on: ${{ matrix.platform }}
     steps:
       - name: Checkout repository
@@ -31,7 +33,7 @@ jobs:
       - name: Install Rust stable
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: ${{ matrix.platform == 'macos-latest' && 'aarch64-apple-darwin' || '' }}
+          targets: ${{ matrix.target }}
 
       - name: Install dependencies
         run: npm install
