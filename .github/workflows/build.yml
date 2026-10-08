@@ -96,6 +96,11 @@ jobs:
           node tools/stage-codex.mjs
           node .core/apps/desktop/desktop/build/stage-cloudflared.mjs ${{ matrix.cloud_platform }} ${{ matrix.arch }}
           npm run stage:runtime
+      - name: Validate first ChatGPT authorization with bundled Codex
+        working-directory: .core/apps/desktop/coordinator
+        env:
+          BIANK_CODEX_EXECUTABLE: ${{ github.workspace }}/.core/apps/desktop/dist/codex/${{ runner.os == 'Windows' && 'codex.exe' || 'codex' }}
+        run: node --experimental-sqlite --import tsx --test test/codex-account-native.integration.ts
       - name: Configure signed updater
         if: inputs.signed
         env:
