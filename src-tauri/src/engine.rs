@@ -1,135 +1,289 @@
-use serde::{Deserialize, Serialize};
-use std::path::{Path, PathBuf};
-use std::process::{Child, Command, Stdio};
-use std::sync::{Arc, Mutex};
+use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
+use rand::RngCore;
+use serde_json::{json, Value};
+use std::{
+    fs,
+    net::TcpListener,
+    path::PathBuf,
+    process::{Child, Command, Stdio},
+    time::{Duration, Instant},
+};
+use zeroize::Zeroize;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct EngineConfig {
-    pub port: u16,
-    pub data_root: PathBuf,
-    pub web_root: PathBuf,
-    pub dev_mode: bool,
+pub fn random_id() -> String {
+    let mut bytes = [0; 32];
+    rand::thread_rng().fill_bytes(&mut bytes);
+    URL_SAFE_NO_PAD.encode(bytes)
 }
-
-impl Default for EngineConfig {
-    fn default() -> Self {
-        let base_data = dirs::data_dir()
-            .unwrap_or_else(|| PathBuf::from("."))
-            .join("biank-desktop");
-
-        Self {
-            port: 8766,
-            data_root: base_data,
-            web_root: PathBuf::from("../dist/web"),
-            dev_mode: false,
+#[derive(Clone)]
+pub struct Connection {
+    pub origin: String,
+    pub instance: String,
+    pub token: String,
+    pub client: reqwest::Client,
+}
+impl Connection {
+    pub async fn request(&self, route: &str, body: Option<Value>) -> Result<Value, String> {
+        let url = format!("{}{route}", self.origin);
+        let request = match body {
+            Some(data) => self.client.post(url).json(&data),
+            None => self.client.get(url),
+        };
+        let response = request
+            .header("X-Biank-Local-Token", &self.token)
+            .header("X-Biank-Instance", &self.instance)
+            .timeout(Duration::from_secs(10))
+            .send()
+            .await
+            .map_err(|_| "El motor no responde")?;
+        if !response.status().is_success() {
+            return Err(format!("Motor: HTTP {}", response.status().as_u16()));
         }
+        response
+            .json()
+            .await
+            .map_err(|_| "Respuesta inválida del motor".into())
     }
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct EngineStatus {
-    pub running: bool,
-    pub port: u16,
-    pub service: String,
-    pub native_instance_id: Option<String>,
-}
-
-pub struct EngineSupervisor {
-    pub config: EngineConfig,
-    child_process: Arc<Mutex<Option<Child>>>,
-}
-
-impl EngineSupervisor {
-    pub fn new(config: EngineConfig) -> Self {
-        Self {
-            config,
-            child_process: Arc::new(Mutex::new(None)),
+    pub async fn drain(&self) -> Result<(), String> {
+        let owner = random_id();
+        let state = self
+            .request(
+                "/api/desktop/drain",
+                Some(json!({"enabled":true,"owner":owner})),
+            )
+            .await?;
+        if state["active"]
+            .as_u64()
+            .ok_or("Estado de mantenimiento inválido")?
+            > 0
+        {
+            self.request(
+                "/api/desktop/drain",
+                Some(json!({"enabled":false,"owner":owner})),
+            )
+            .await?;
+            return Err(
+                "Hay trabajo activo. Biank conserva la sesión; vuelve a intentar al terminar."
+                    .into(),
+            );
         }
-    }
-
-    /// Resuelve la ruta al bundle del coordinador TypeScript
-    pub fn resolve_coordinator_script(&self) -> Option<PathBuf> {
-        let candidates = [
-            PathBuf::from("resources/coordinator/index.mjs"),
-            PathBuf::from("../biank/apps/desktop/coordinator/dist/index.mjs"),
-            PathBuf::from("../../biank/apps/desktop/coordinator/dist/index.mjs"),
-        ];
-
-        for candidate in candidates {
-            if candidate.exists() {
-                return Some(candidate);
-            }
+        if let Err(error) = self
+            .request("/api/desktop/shutdown", Some(json!({"owner":owner})))
+            .await
+        {
+            let _ = self
+                .request(
+                    "/api/desktop/drain",
+                    Some(json!({"enabled":false,"owner":owner})),
+                )
+                .await;
+            return Err(error);
         }
-        None
-    }
-
-    /// Lanza el subproceso del coordinador TypeScript bajo supervisión
-    pub fn spawn(&self, node_executable: Option<&str>, vault_key_file: Option<&Path>) -> Result<(), String> {
-        let script = self.resolve_coordinator_script()
-            .ok_or_else(|| "No se encontró el bundle index.mjs del coordinador".to_string())?;
-
-        let node_bin = node_executable.unwrap_or("node");
-
-        let mut cmd = Command::new(node_bin);
-        cmd.arg(&script)
-            .arg("--root")
-            .arg(&self.config.data_root)
-            .arg("--port")
-            .arg(self.config.port.to_string())
-            .arg("--web-root")
-            .arg(&self.config.web_root);
-
-        // Inyección de invariantes de entorno de Biank
-        cmd.env("BIANK_STANDALONE", "1")
-            .env("BIANK_DESKTOP_LOCAL_PORT", self.config.port.to_string())
-            .env("BIANK_DATA_ROOT", &self.config.data_root)
-            .env("BIANK_DESKTOP_DATA_ROOT", &self.config.data_root)
-            .env("NODE_OPTIONS", "--experimental-sqlite");
-
-        if let Some(key_path) = vault_key_file {
-            cmd.env("BIANK_DESKTOP_VAULT_KEY_FILE", key_path);
-        }
-
-        cmd.stdout(Stdio::piped())
-            .stderr(Stdio::piped());
-
-        let child = cmd.spawn().map_err(|e| format!("Fallo al arrancar coordinador: {}", e))?;
-
-        if let Ok(mut lock) = self.child_process.lock() {
-            *lock = Some(child);
-        }
-
         Ok(())
     }
-
-    /// Comprueba la salud del coordinador loopback HTTP
-    pub async fn check_health(&self) -> Result<EngineStatus, String> {
-        let _url = format!("http://127.0.0.1:{}/api/health", self.config.port);
-        let is_running = self.child_process.lock()
-            .map(|guard| guard.is_some())
-            .unwrap_or(false);
-
-        Ok(EngineStatus {
-            running: is_running,
-            port: self.config.port,
-            service: "biank-desktop".to_string(),
-            native_instance_id: Some("tauri-pilot-instance".to_string()),
-        })
-    }
-
-    /// Detiene el subproceso del coordinador de forma limpia
-    pub fn shutdown(&self) {
-        if let Ok(mut lock) = self.child_process.lock() {
-            if let Some(mut child) = lock.take() {
-                let _ = child.kill();
-                let _ = child.wait();
+}
+pub struct Config {
+    pub root: PathBuf,
+    pub resources: PathBuf,
+    pub version: String,
+    pub development: bool,
+}
+pub struct Supervisor {
+    pub connection: Connection,
+    pub child: Child,
+}
+pub fn valid_identity(value: &Value, instance: &str) -> bool {
+    value["status"] == "ok"
+        && value["service"] == "biank-desktop"
+        && value["nativeInstanceId"] == instance
+}
+impl Supervisor {
+    pub async fn start(config: Config, mut key: Option<Vec<u8>>) -> Result<Self, String> {
+        let runtime = config.resources.join("runtime");
+        let script = runtime.join("coordinator/index.mjs");
+        let node = runtime.join(if cfg!(windows) {
+            "node/node.exe"
+        } else {
+            "node/node"
+        });
+        if !script.is_file() || !node.is_file() || !runtime.join("web/index.html").is_file() {
+            return Err("Faltan recursos del instalador. Ejecuta npm run stage:runtime.".into());
+        }
+        let client = reqwest::Client::builder()
+            .redirect(reqwest::redirect::Policy::none())
+            .build()
+            .map_err(|_| "HTTP local no disponible")?;
+        // Do not adopt or replace an existing writer of another shell/release.
+        if let Ok(raw) = fs::read(config.root.join("runtime.json")) {
+            if let Ok(saved) = serde_json::from_slice::<Value>(&raw) {
+                if let Some(port) = saved["port"].as_u64() {
+                    if (1024..=65535).contains(&port) {
+                        if client
+                            .get(format!("http://127.0.0.1:{port}/api/health"))
+                            .timeout(Duration::from_secs(1))
+                            .send()
+                            .await
+                            .is_ok()
+                        {
+                            return Err("Biank ya tiene un motor activo. Sal del shell anterior antes de abrir Tauri; no se interrumpió su trabajo.".into());
+                        }
+                    }
+                }
             }
         }
+        fs::create_dir_all(config.root.join("logs")).map_err(|_| "No se pudo abrir el almacén")?;
+        let listener = TcpListener::bind("127.0.0.1:0").map_err(|_| "No hay puerto local")?;
+        let port = listener
+            .local_addr()
+            .map_err(|_| "No hay puerto local")?
+            .port();
+        drop(listener);
+        let connection = Connection {
+            origin: format!("http://127.0.0.1:{port}"),
+            instance: random_id(),
+            token: random_id(),
+            client,
+        };
+        let log = fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(config.root.join("logs/engine.log"))
+            .map_err(|_| "No se pudo abrir el log")?;
+        let mut cmd = Command::new(node);
+        cmd.arg("--experimental-sqlite")
+            .arg(script)
+            .arg("--root")
+            .arg(&config.root)
+            .args([
+                "--host",
+                "127.0.0.1",
+                "--port",
+                &port.to_string(),
+                "--web-root",
+            ])
+            .arg(runtime.join("web"))
+            .current_dir(runtime.join("coordinator"))
+            .env("BIANK_STANDALONE", "1")
+            .env("BIANK_ACCOUNT_REQUIRED", "1")
+            .env("BIANK_APP_VERSION", &config.version)
+            .env("BIANK_DESKTOP_SHELL", "tauri")
+            .env(
+                "BIANK_DESKTOP_DEV",
+                if config.development { "1" } else { "0" },
+            )
+            .env("BIANK_DESKTOP_CANDIDATE", "1")
+            .env("BIANK_DATA_ROOT", &config.root)
+            .env("BIANK_DESKTOP_DATA_ROOT", config.root.join("data"))
+            .env("BIANK_INSTANCE_ID", &connection.instance)
+            .env("BIANK_WEB_TOKEN", &connection.token)
+            .env("BIANK_DESKTOP_LOCAL_PORT", port.to_string())
+            .env(
+                "BIANK_CODEX_EXECUTABLE",
+                runtime.join(if cfg!(windows) {
+                    "codex/codex.exe"
+                } else {
+                    "codex/codex"
+                }),
+            )
+            .env(
+                "BIANK_CLOUDFLARED_EXECUTABLE",
+                runtime.join(if cfg!(windows) {
+                    "cloudflared/cloudflared.exe"
+                } else {
+                    "cloudflared/cloudflared"
+                }),
+            )
+            .env(
+                "PLAYWRIGHT_BROWSERS_PATH",
+                runtime.join("coordinator/browsers"),
+            )
+            .env_remove("ELECTRON_RUN_AS_NODE")
+            .env_remove("NODE_OPTIONS")
+            .env_remove("BIANK_DESKTOP_VAULT_KEY_SOURCE")
+            .stdin(if key.is_some() {
+                Stdio::piped()
+            } else {
+                Stdio::null()
+            })
+            .stdout(log.try_clone().map_err(|_| "Log no disponible")?)
+            .stderr(log);
+        let identity = runtime.join("runtime-config.json");
+        if let Ok(raw) = fs::read(identity) {
+            if let Ok(value) = serde_json::from_slice::<Value>(&raw) {
+                if let Some(id) = value["googleIdentity"]["clientId"].as_str() {
+                    cmd.env("BIANK_GOOGLE_CLIENT_ID", id);
+                }
+            }
+        }
+        if key.is_some() {
+            cmd.env("BIANK_DESKTOP_VAULT_KEY_SOURCE", "stdin");
+        }
+        if config.development {
+            cmd.env("BIANK_DESKTOP_CONFIG_ROOT", config.root.join("data/config"));
+        }
+        #[cfg(windows)]
+        {
+            use std::os::windows::process::CommandExt;
+            cmd.creation_flags(0x08000000);
+        }
+        let mut child = cmd
+            .spawn()
+            .map_err(|_| "No se pudo iniciar Node empaquetado")?;
+        if let Some(ref mut secret) = key {
+            use std::io::Write;
+            let mut encoded = URL_SAFE_NO_PAD.encode(&*secret);
+            encoded.push('\n');
+            let result = child
+                .stdin
+                .take()
+                .ok_or("stdin no disponible")
+                .and_then(|mut pipe| {
+                    pipe.write_all(encoded.as_bytes())
+                        .map_err(|_| "No se pudo entregar la llave")
+                });
+            secret.zeroize();
+            encoded.zeroize();
+            if let Err(e) = result {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(e.into());
+            }
+        }
+        let deadline = Instant::now() + Duration::from_secs(120);
+        while Instant::now() < deadline {
+            if child
+                .try_wait()
+                .map_err(|_| "No se pudo observar el motor")?
+                .is_some()
+            {
+                return Err("El motor terminó antes de iniciar. Se conservan tus datos; consulta logs/engine.log.".into());
+            }
+            if let Ok(health) = connection.request("/api/health", None).await {
+                if valid_identity(&health, &connection.instance) {
+                    return Ok(Self { connection, child });
+                }
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err("El motor no acredita su identidad".into());
+            }
+            tokio::time::sleep(Duration::from_millis(250)).await;
+        }
+        let _ = child.kill();
+        let _ = child.wait();
+        Err("El motor no inició en el plazo previsto. Se conservan tus datos.".into())
     }
 }
-
-impl Drop for EngineSupervisor {
-    fn drop(&mut self) {
-        self.shutdown();
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn identity_is_bound_to_service_and_instance() {
+        let value = json!({"status":"ok","service":"biank-desktop","nativeInstanceId":"own"});
+        assert!(valid_identity(&value, "own"));
+        assert!(!valid_identity(&value, "other"));
+        assert!(!valid_identity(
+            &json!({"status":"ok","nativeInstanceId":"own"}),
+            "own"
+        ));
     }
 }

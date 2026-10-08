@@ -1,54 +1,103 @@
-name: Release Biank Desktop (Tauri)
-
+name: Build Biank Desktop (Tauri)
 on:
-  push:
-    tags:
-      - 'v*'
   workflow_dispatch:
-
+    inputs:
+      core_sha:
+        description: SHA aprobado e inmutable del core privado
+        required: true
+        type: string
+      signed:
+        description: Preparar candidato firmado para validar; no publica latest
+        type: boolean
+        default: false
+permissions:
+  contents: read
+concurrency:
+  group: tauri-candidate-${{ github.ref }}
+  cancel-in-progress: false
 jobs:
-  release:
-    permissions:
-      contents: write
+  build:
     strategy:
       fail-fast: false
       matrix:
         include:
-          - platform: 'windows-latest'
-            args: ''
-            target: ''
-          - platform: 'macos-latest'
-            args: '--target aarch64-apple-darwin'
-            target: 'aarch64-apple-darwin'
+          - platform: windows-latest
+            target: x86_64-pc-windows-msvc
+            cloud_platform: win
+            arch: x64
+          - platform: macos-latest
+            target: aarch64-apple-darwin
+            cloud_platform: mac
+            arch: arm64
     runs-on: ${{ matrix.platform }}
+    timeout-minutes: 60
     steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - uses: actions/checkout@v4
+      - name: Require immutable core and scoped read grant
+        shell: bash
+        env:
+          CORE_SHA: ${{ inputs.core_sha }}
+          CORE_GRANT: ${{ secrets.BIANK_CORE_READ_SSH_KEY }}
+        run: |
+          [[ "$CORE_SHA" =~ ^[0-9a-f]{40}$ ]] || { echo 'Se requiere el SHA completo del core aprobado'; exit 1; }
+          test -n "$CORE_GRANT" || { echo 'Falta el grant read-only del core'; exit 1; }
+      - uses: actions/checkout@v4
         with:
-          node-version: 22
-
-      - name: Install Rust stable
-        uses: dtolnay/rust-toolchain@stable
+          repository: jobeto86/biank
+          ref: ${{ inputs.core_sha }}
+          ssh-key: ${{ secrets.BIANK_CORE_READ_SSH_KEY }}
+          persist-credentials: false
+          path: .core
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
-
-      - name: Install dependencies
-        run: npm install
-
-      - name: Sync Web Frontend
-        run: npm run sync:web
-
-      - name: Build and Package with Tauri Action
-        uses: tauri-apps/tauri-action@v0
+      - run: npm ci
+      - name: Build exact coordinator and platform runtime
+        working-directory: .core/apps/desktop/coordinator
+        run: |
+          npm ci
+          npm run build
+          npm run bundle
+          npm run stage:runtime
+          node tools/stage-candidate-browser.mjs
+      - name: Build web interface
+        working-directory: .core/apps/desktop/web
+        run: npm ci && npm run build
+      - name: Install pinned official Codex distribution
+        working-directory: .core/apps/desktop/desktop/vendor
+        run: npm ci --ignore-scripts
+      - name: Stage bundled runtimes
         env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          BIANK_CORE_DESKTOP: ${{ github.workspace }}/.core/apps/desktop
+          BIANK_GOOGLE_CLIENT_ID: ${{ vars.BIANK_GOOGLE_CLIENT_ID }}
+        run: |
+          node tools/stage-codex.mjs
+          node .core/apps/desktop/desktop/build/stage-cloudflared.mjs ${{ matrix.cloud_platform }} ${{ matrix.arch }}
+          npm run stage:runtime
+      - name: Configure signed updater
+        if: inputs.signed
+        env:
+          BIANK_TAURI_PUBLIC_KEY: ${{ vars.BIANK_TAURI_PUBLIC_KEY }}
+        run: npm run configure:updater
+      - name: Check native contracts
+        run: cargo test --manifest-path src-tauri/Cargo.toml --locked
+      - name: Build unsigned QA installer
+        if: ${{ !inputs.signed }}
+        run: npm run tauri -- build --target ${{ matrix.target }}
+      - name: Build signed update artifacts
+        if: inputs.signed
+        env:
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: npm run tauri -- build --target ${{ matrix.target }} --config src-tauri/updater.conf.json
+      - name: Retain candidate for review
+        uses: actions/upload-artifact@v4
         with:
-          tagName: v__VERSION__
-          releaseName: 'Biank Desktop v__VERSION__'
-          releaseBody: 'Release nativo ligero de Biank Desktop basado en Tauri v2.'
-          releaseDraft: true
-          prerelease: false
-          args: ${{ matrix.args }}
+          name: Biank-Tauri-${{ matrix.target }}
+          path: src-tauri/target/${{ matrix.target }}/release/bundle/
+          if-no-files-found: error
+          retention-days: 3
+          compression-level: 0

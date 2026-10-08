@@ -1,52 +1,173 @@
-use std::fs;
-use std::path::{Path, PathBuf};
-use serde::{Deserialize, Serialize};
+//! Master key stays in the OS credential store and crosses only the child's stdin.
+use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
+use rand::RngCore;
+use sha2::{Digest, Sha256};
+use std::{
+    fs,
+    path::{Path, PathBuf},
+};
+use zeroize::Zeroize;
 
-#[derive(Debug, Serialize, Deserialize)]
-pub struct VaultKeyResponse {
-    pub success: bool,
-    pub key_path: String,
-    pub sealed: bool,
-}
-
-pub struct VaultManager {
-    secrets_dir: PathBuf,
-}
-
-impl VaultManager {
-    pub fn new(root_dir: &Path) -> Self {
-        let secrets_dir = root_dir.join("secrets");
-        Self { secrets_dir }
+fn decode(raw: &[u8]) -> Result<Vec<u8>, String> {
+    let bytes = if raw.len() == 32 {
+        raw.to_vec()
+    } else {
+        URL_SAFE_NO_PAD
+            .decode(String::from_utf8_lossy(raw).trim())
+            .map_err(|_| "Llave existente inválida")?
+    };
+    if bytes.len() != 32 {
+        return Err("Llave existente inválida; se conservan los datos".into());
     }
-
-    /// Obtiene o inicializa la llave maestra sellada por el sistema operativo
-    pub fn ensure_vault_key(&self) -> Result<String, String> {
-        let key_file = self.secrets_dir.join("vault.key.sealed");
-        
-        if key_file.exists() {
-            // Leer y dessellar la llave existente
-            let data = fs::read_to_string(&key_file)
-                .map_err(|e| format!("Error al leer vault.key.sealed: {}", e))?;
-            return Ok(data.trim().to_string());
+    Ok(bytes)
+}
+pub fn open(root: &Path, development: bool) -> Result<Option<Vec<u8>>, String> {
+    if std::env::var_os("BIANK_DESKTOP_VAULT_KEY_FILE").is_some() {
+        return Ok(None);
+    }
+    // Isolated development lets the existing coordinator use its own synthetic key file.
+    if development {
+        return Ok(None);
+    }
+    let account = format!(
+        "installation-{:x}",
+        Sha256::digest(root.to_string_lossy().as_bytes())
+    );
+    let entry = keyring::Entry::new("Biank Desktop Vault", &account)
+        .map_err(|_| "Llavero del sistema no disponible")?;
+    match entry.get_secret() {
+        Ok(key) => return decode(&key).map(Some),
+        Err(keyring::Error::NoEntry) => {}
+        Err(_) => {
+            return Err("No se pudo abrir el llavero del sistema. No se creó otra llave.".into())
         }
-
-        // Crear directorio de secretos con permisos restringidos
-        fs::create_dir_all(&self.secrets_dir)
-            .map_err(|e| format!("Error creando carpeta secrets: {}", e))?;
-
-        // Generar llave aleatoria de 32 bytes en hex
-        let generated_key = format!("bk_vault_{:016x}{:016x}", rand_u64(), rand_u64());
-
-        // Guardar llave (en producción nativa aquí se aplica DPAPI / Keychain / Secret Service)
-        fs::write(&key_file, &generated_key)
-            .map_err(|e| format!("Error guardando vault.key.sealed: {}", e))?;
-
-        Ok(generated_key)
+    }
+    let sealed = root.join("secrets/vault.key.sealed");
+    let config = std::env::var_os("BIANK_DESKTOP_CONFIG_ROOT")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| {
+            std::env::var_os("XDG_CONFIG_HOME")
+                .map(PathBuf::from)
+                .unwrap_or_else(|| dirs::home_dir().unwrap().join(".config"))
+                .join("biank-desktop")
+        });
+    let candidates = [
+        config.join("vault/master.key"),
+        root.join("secrets/vault.key"),
+        root.join("data/secrets/vault.key"),
+    ];
+    let mut key = if sealed.is_file() {
+        decode(&unseal_electron(
+            &fs::read(&sealed).map_err(|_| "No se pudo leer la llave sellada")?,
+        )?)?
+    } else if let Some(file) = candidates.iter().find(|p| p.is_file()) {
+        if fs::symlink_metadata(file)
+            .map_err(|_| "Llave existente no legible")?
+            .file_type()
+            .is_symlink()
+        {
+            return Err("La llave existente no es un archivo regular".into());
+        }
+        decode(&fs::read(file).map_err(|_| "Llave existente no legible")?)?
+    } else {
+        // Existing encrypted stores must never receive a newly generated key.
+        if root.join("data/vault.db").exists()
+            || root.join("data/identity/vault.db").exists()
+            || root.join("vault.db").exists()
+            || root.join("data/account-profiles.json").exists()
+        {
+            return Err("Existe una bóveda sin llave accesible. Se conservan los datos.".into());
+        }
+        let mut bytes = vec![0; 32];
+        rand::thread_rng().fill_bytes(&mut bytes);
+        bytes
+    };
+    if entry.set_secret(&key).is_err() {
+        key.zeroize();
+        return Err("No se pudo sellar la llave en el llavero del sistema".into());
+    }
+    let mut check = entry
+        .get_secret()
+        .map_err(|_| "No se pudo verificar la llave sellada")?;
+    let valid = check == key;
+    check.zeroize();
+    if !valid {
+        key.zeroize();
+        return Err("El llavero no conserva la llave original".into());
+    }
+    // Keep old encrypted material for rollback; no destructive migration here.
+    Ok(Some(key))
+}
+#[cfg(windows)]
+fn unseal_electron(raw: &[u8]) -> Result<Vec<u8>, String> {
+    use windows_sys::Win32::{
+        Foundation::LocalFree,
+        Security::Cryptography::{
+            CryptUnprotectData, CRYPTPROTECT_UI_FORBIDDEN, CRYPT_INTEGER_BLOB,
+        },
+    };
+    let raw = raw.strip_prefix(b"DPAPI").unwrap_or(raw);
+    let mut input = CRYPT_INTEGER_BLOB {
+        cbData: raw.len() as u32,
+        pbData: raw.as_ptr() as *mut u8,
+    };
+    let mut output = CRYPT_INTEGER_BLOB {
+        cbData: 0,
+        pbData: std::ptr::null_mut(),
+    };
+    unsafe {
+        if CryptUnprotectData(
+            &mut input,
+            std::ptr::null_mut(),
+            std::ptr::null(),
+            std::ptr::null(),
+            std::ptr::null(),
+            CRYPTPROTECT_UI_FORBIDDEN,
+            &mut output,
+        ) == 0
+        {
+            return Err("No se pudo abrir la llave Electron con DPAPI".into());
+        }
+        let bytes = std::slice::from_raw_parts(output.pbData, output.cbData as usize).to_vec();
+        LocalFree(output.pbData as _);
+        Ok(bytes)
     }
 }
-
-fn rand_u64() -> u64 {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    let duration = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default();
-    duration.as_nanos() as u64
+#[cfg(target_os = "macos")]
+fn unseal_electron(raw: &[u8]) -> Result<Vec<u8>, String> {
+    use aes::cipher::{block_padding::Pkcs7, BlockDecryptMut, KeyIvInit};
+    if !raw.starts_with(b"v10") {
+        return Err("Formato de llave Electron desconocido; se conserva".into());
+    }
+    let entry =
+        keyring::Entry::new("Biank Safe Storage", "Biank").map_err(|_| "Keychain no disponible")?;
+    let mut password = entry
+        .get_password()
+        .map_err(|_| "No se pudo recuperar la identidad Electron de Keychain")?;
+    let mut key = [0; 16];
+    pbkdf2::pbkdf2_hmac::<sha1::Sha1>(password.as_bytes(), b"saltysalt", 1003, &mut key);
+    password.zeroize();
+    let result = cbc::Decryptor::<aes::Aes128>::new(&key.into(), &[b' '; 16].into())
+        .decrypt_padded_vec_mut::<Pkcs7>(&raw[3..])
+        .map_err(|_| "No se pudo abrir la llave Electron");
+    key.zeroize();
+    result.map_err(Into::into)
+}
+#[cfg(not(any(windows, target_os = "macos")))]
+fn unseal_electron(_raw: &[u8]) -> Result<Vec<u8>, String> {
+    Err("La llave sellada existente requiere recuperación del llavero original".into())
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn rejects_wrong_length_and_preserves_raw_and_encoded_keys() {
+        assert!(decode(b"placeholder").is_err());
+        let key = vec![7; 32];
+        assert_eq!(decode(&key).unwrap(), key);
+        assert_eq!(
+            decode(URL_SAFE_NO_PAD.encode(&key).as_bytes()).unwrap(),
+            key
+        );
+    }
 }
