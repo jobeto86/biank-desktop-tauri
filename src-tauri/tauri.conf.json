@@ -4,7 +4,6 @@
   "version": "0.3.0",
   "identifier": "com.cbinteligencia.biank",
   "build": {
-    "beforeBuildCommand": "node ../tools/sync-web.mjs",
     "frontendDist": "../dist/web"
   },
   "app": {
