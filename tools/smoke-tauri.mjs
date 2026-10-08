@@ -15,10 +15,10 @@ try{
  const until=Date.now()+120000;
  while(Date.now()<until){
   if(child.exitCode!==null)throw Error(`Tauri terminó con código ${child.exitCode}; evidencia en ${root}`);
-  if(existsSync(join(root,'qa-ui.json'))){try{evidence=JSON.parse(readFileSync(join(root,'qa-ui.json'),'utf8'));}catch{}if(evidence?.bridge&&evidence?.health&&evidence?.login)break;}
+  if(existsSync(join(root,'qa-ui.json'))){try{evidence=JSON.parse(readFileSync(join(root,'qa-ui.json'),'utf8'));}catch{}if(evidence?.authBrowser&&evidence?.bridge&&evidence?.health&&evidence?.login)break;}
   await new Promise(resolve=>setTimeout(resolve,500));
  }
- assert.deepEqual(evidence,{bridge:true,health:true,login:true},`La ventana no acredita UI, IPC y motor; evidencia en ${root}`);
+ assert.deepEqual(evidence,{authBrowser:true,bridge:true,health:true,login:true},`La ventana no acredita UI, IPC y motor; evidencia en ${root}`);
  const ids=execFileSync('xdotool',['search','--name','^Biank Desktop$'],{encoding:'utf8'}).trim().split('\n');
  execFileSync('import',['-window',ids.at(-1),join(root,'tauri-login.png')]);
  execFileSync('xdotool',['windowfocus','--sync',ids.at(-1)]);

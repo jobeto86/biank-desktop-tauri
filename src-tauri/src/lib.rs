@@ -86,7 +86,7 @@ fn qa_report(state: Value) -> Result<(), String> {
     if !root.is_absolute() {
         return Err("Almacén QA inválido".into());
     }
-    let evidence = json!({"bridge":state["bridge"].as_bool().unwrap_or(false),"health":state["health"].as_bool().unwrap_or(false),"login":state["login"].as_bool().unwrap_or(false)});
+    let evidence = json!({"authBrowser":state["authBrowser"].as_bool().unwrap_or(false),"bridge":state["bridge"].as_bool().unwrap_or(false),"health":state["health"].as_bool().unwrap_or(false),"login":state["login"].as_bool().unwrap_or(false)});
     std::fs::write(root.join("qa-ui.json"), evidence.to_string())
         .map_err(|_| "No se pudo guardar la evidencia QA".into())
 }
