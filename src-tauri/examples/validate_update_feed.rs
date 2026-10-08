@@ -53,8 +53,15 @@ fn main() {
                     }
                     Ok::<_, String>(format!("Native updater manifest/download/signature/version/SHA256: PASS ({target})"))
                 }.await;
+                // Tauri may terminate the process from its event loop rather
+                // than return from app.run. Emit evidence and status first.
+                let code = if checked.is_ok() { 0 } else { 1 };
+                match &checked {
+                    Ok(message) => println!("{message}"),
+                    Err(error) => eprintln!("Updater QA failed: {error}"),
+                }
                 *output.lock().unwrap() = Some(checked);
-                handle.exit(0);
+                handle.exit(code);
             });
             Ok(())
         }).build(context).expect("QA updater application failed to initialize");

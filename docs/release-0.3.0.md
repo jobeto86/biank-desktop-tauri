@@ -1,6 +1,9 @@
 # Biank Desktop 0.3.0 — validación de release
 
-Estado: draft completo en carga; aún no promovido a latest.
+Estado: [publicado como latest](https://github.com/jobeto86/biank-desktop/releases/tag/v0.3.0).
+Los dos aliases públicos de instalación responden HTTP 206. El manifiesto
+público coincide con el preparado y los nueve assets coinciden en tamaño y
+SHA-256 con los artefactos verificados.
 
 Las PRs [core #1](https://github.com/jobeto86/biank/pull/1) y
 [shell #1](https://github.com/jobeto86/biank-desktop-tauri/pull/1) están fusionadas.
@@ -46,7 +49,8 @@ un salto automático desde electron-updater y no se publican feeds Electron.
 descarga, firma, versión y SHA-256 de la publicación; nunca instala ni fuerza
 una actualización de la aplicación cliente.
 
-Estado del chequeo del canal público: pendiente de promoción.
+Estado del chequeo nativo adicional del canal público: en validación; el arnés
+emite su resultado antes del cierre del proceso Tauri.
 
 ## Límites medidos
 
