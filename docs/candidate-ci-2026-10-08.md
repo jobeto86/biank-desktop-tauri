@@ -40,3 +40,24 @@ El workflow permite repetir Windows sin reconstruir macOS.
 El primer NSIS consumió 13 minutos de compresión LZMA (367.91 MiB). Los
 candidatos del updater usan ZLIB para medir la reducción del tiempo de build
 y el incremento de tamaño, conservando los mismos recursos y controles de firma.
+
+## Resultados de artefactos
+
+- macOS corregido (run 37772578225, shell 1e2a326, core d82d9f6): cinco
+  tests Rust y test de frameworks PASS; firma y versión del tar.gz PASS;
+  integridad de 5.175 recursos del tar.gz PASS. DMG 804.26 MiB, updater
+  tar.gz 827.17 MiB. La normalización aumenta la huella: no se acredita ahorro.
+- Windows inicial (run 37769690408): firma/version NSIS y 4.871 recursos
+  extraídos PASS; ejecutables Node/Codex/cloudflared PE presentes. NSIS
+  367.91 MiB (LZMA), MSI 517.28 MiB. Core anterior, no es el candidato final.
+- Windows final (run 37773545006, shell df184da, core d82d9f6): cinco
+  tests Rust PASS; firma y versión NSIS PASS; integridad de 4.871 recursos
+  extraídos PASS y ejecutables Node/Codex/cloudflared PE presentes. NSIS
+  513.91 MiB (ZLIB). Compresión aproximada 3m10 frente a 13m12 LZMA;
+  aumenta 146 MiB, con impacto en descarga. No es un ahorro de tamaño.
+- La auditoría macOS se reproduce con `tools/verify-macos-candidate.py`.
+  `verify_update` comprueba firma y versión sobre los archivos reales.
+
+Esto no acredita ejecución de Chromium macOS/Windows ni migración desde
+Electron en un equipo cliente. No hay instaladores publicados ni promoción
+latest. Authenticode/Developer ID/notarización permanecen separados del updater.
