@@ -10,6 +10,10 @@ on:
         description: Repetir únicamente Windows después de validar macOS
         type: boolean
         default: false
+      macos_only:
+        description: Repetir únicamente macOS
+        type: boolean
+        default: false
       signed:
         description: Firmar para updater (no certificado Windows/Apple); no publica latest
         type: boolean
@@ -24,7 +28,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include: ${{ fromJSON(inputs.windows_only && '[{"platform":"windows-latest","target":"x86_64-pc-windows-msvc","cloud_platform":"win","arch":"x64","bundles":"nsis"}]' || '[{"platform":"windows-latest","target":"x86_64-pc-windows-msvc","cloud_platform":"win","arch":"x64","bundles":"nsis"},{"platform":"macos-latest","target":"aarch64-apple-darwin","cloud_platform":"mac","arch":"arm64","bundles":"app,dmg"}]') }}
+        include: ${{ fromJSON(inputs.windows_only && '[{"platform":"windows-latest","target":"x86_64-pc-windows-msvc","cloud_platform":"win","arch":"x64","bundles":"nsis"}]' || inputs.macos_only && '[{"platform":"macos-latest","target":"aarch64-apple-darwin","cloud_platform":"mac","arch":"arm64","bundles":"app,dmg"}]' || '[{"platform":"windows-latest","target":"x86_64-pc-windows-msvc","cloud_platform":"win","arch":"x64","bundles":"nsis"},{"platform":"macos-latest","target":"aarch64-apple-darwin","cloud_platform":"mac","arch":"arm64","bundles":"app,dmg"}]') }}
     runs-on: ${{ matrix.platform }}
     timeout-minutes: 60
     steps:
