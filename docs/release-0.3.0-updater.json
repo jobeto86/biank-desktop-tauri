@@ -1,0 +1,24 @@
+{
+  "schema": 1,
+  "release": "https://github.com/jobeto86/biank-desktop/releases/tag/v0.3.0",
+  "version": "0.3.0",
+  "runner": "local Linux ARM64, isolated Tauri QA application",
+  "pluginVersion": "2.13.2",
+  "scope": "actual public manifest, full download, signature, signed version, SHA256; no installation or future-version upgrade simulated",
+  "targets": [
+    {
+      "target": "windows-x86_64",
+      "result": "PASS",
+      "sha256": "47ade5c70e81d34ca682495a8bb40da82ea9f01980988af777c1a0853fec3e52",
+      "marker": "Native updater manifest/download/signature/version/SHA256: PASS (windows-x86_64)",
+      "exitCode": 0
+    },
+    {
+      "target": "darwin-aarch64",
+      "result": "PASS",
+      "sha256": "9970e9c47b0d46ff2743fed8f40daa9517f3c85f05d6faae3cf3e8120cc3708b",
+      "marker": "Native updater manifest/download/signature/version/SHA256: PASS (darwin-aarch64)",
+      "exitCode": 0
+    }
+  ]
+}

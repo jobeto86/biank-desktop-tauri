@@ -49,8 +49,12 @@ un salto automático desde electron-updater y no se publican feeds Electron.
 descarga, firma, versión y SHA-256 de la publicación; nunca instala ni fuerza
 una actualización de la aplicación cliente.
 
-Estado del chequeo nativo adicional del canal público: en validación; el arnés
-emite su resultado antes del cierre del proceso Tauri.
+Chequeo del plugin Tauri real: **PASS** para `windows-x86_64` y
+`darwin-aarch64`. Ambos paquetes se descargaron completos desde el canal
+público y pasaron firma, versión 0.3.0 y SHA-256 contra los artefactos locales.
+El arnés emitió marcadores PASS explícitos y terminó con código 0.
+Esta comprobación de transferencia/criptografía se ejecutó en Linux ARM64; las
+instalaciones y el navegador se validaron por separado en sus SO nativos.
 
 ## Límites medidos
 
