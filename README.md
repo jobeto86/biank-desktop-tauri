@@ -6,6 +6,8 @@ Persona y MCP operan las mismas páginas. Cada agente conserva su sesión y cada
 conversación sus pestañas. Las rutinas pueden solicitar headless explícitamente.
 
 El instalador incluye Node, coordinador, UI, Codex, Chromium y cloudflared.
+El ejecutable y SDK de Electron quedan fuera del payload. La lectura de una
+llave antigua utiliza APIs nativas y no requiere instalar ni ejecutar Electron.
 El tamaño y RAM del conjunto se miden sobre instaladores reales; no se promete
 una workstation de 18 MB ni menos de 50 MB de RAM.
 
@@ -41,6 +43,19 @@ El updater exige firmas. `npm run configure:updater` usa la variable pública
 `BIANK_TAURI_PUBLIC_KEY`; las claves privadas se resuelven únicamente en CI.
 Un build de QA sin canal firmado muestra la falta de configuración y puede arrancar.
 Aplicar una actualización o salir exige drain y espera al cierre del motor.
+
+## Instalación y actualizaciones
+
+El primer paso desde Electron es instalar Tauri manualmente. Después, Tauri
+comprueba el canal firmado al arrancar y cada seis horas; descarga y verifica
+firma/versión y aplica después del drain al salir o por acción explícita.
+El feed oficial es `latest.json` del canal `jobeto86/biank-desktop`. No se promete
+compatibilidad del protocolo `electron-updater` ni se borran datos existentes.
+
+El publicador oficial del core recibe `BIANK_TAURI_RELEASE_ASSETS`,
+`BIANK_TAURI_WINDOWS_RUN` y `BIANK_TAURI_MACOS_RUN`, verifica los jobs nativos y
+las firmas finales, sube un draft completo y sólo entonces lo promueve a latest.
+`--sin-publicar` prepara y verifica los archivos sin promoverlos.
 
 ## Validación
 
