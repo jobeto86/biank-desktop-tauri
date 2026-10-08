@@ -1,0 +1,28 @@
+# Node / Frontend
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+dist/
+
+# Rust / Tauri
+src-tauri/target/
+src-tauri/gen/
+**/*.rs.bk
+
+# Biank Runtime & Secrets
+secrets/
+*.sealed
+data/
+*.sqlite3
+*.sqlite3-journal
+*.sqlite3-wal
+
+# OS / Editor
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo

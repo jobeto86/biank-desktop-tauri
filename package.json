@@ -1,0 +1,24 @@
+{
+  "name": "biank-desktop-tauri",
+  "version": "0.3.0",
+  "private": true,
+  "description": "Biank Desktop — Lightweight Native Shell powered by Tauri v2",
+  "scripts": {
+    "dev": "tauri dev",
+    "build": "tauri build",
+    "tauri": "tauri",
+    "sync:web": "node tools/sync-web.mjs"
+  },
+  "dependencies": {
+    "@tauri-apps/api": "^2.1.1",
+    "@tauri-apps/plugin-dialog": "^2.0.1",
+    "@tauri-apps/plugin-process": "^2.0.1",
+    "@tauri-apps/plugin-shell": "^2.0.1",
+    "@tauri-apps/plugin-updater": "^2.1.0"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2.1.2",
+    "@types/node": "^22.18.6",
+    "typescript": "^5.9.2"
+  }
+}
