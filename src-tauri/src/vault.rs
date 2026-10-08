@@ -184,8 +184,20 @@ fn unseal_electron(raw: &[u8]) -> Result<Vec<u8>, String> {
     }
     // Electron uses SecItemCopyMatching across the user's Keychain search list.
     // Do not constrain the legacy lookup to one default keychain/domain.
+    // Electron's non-App-Store builds append " Key" to the account. Older
+    // builds used the unsuffixed account; only fall back when it is absent.
     let mut password =
-        security_framework::passwords::get_generic_password("Biank Safe Storage", "Biank")
+        security_framework::passwords::get_generic_password("Biank Safe Storage", "Biank Key")
+            .or_else(|error| {
+                if error.code() == -25300 {
+                    security_framework::passwords::get_generic_password(
+                        "Biank Safe Storage",
+                        "Biank",
+                    )
+                } else {
+                    Err(error)
+                }
+            })
             .map_err(|error| {
                 format!(
                     "No se pudo recuperar la identidad Electron de Keychain (OSStatus {})",

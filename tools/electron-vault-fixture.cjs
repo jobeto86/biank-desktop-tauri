@@ -7,6 +7,7 @@ const root=resolve(process.env.BIANK_MIGRATION_FIXTURE_ROOT||process.argv[2]);
 app.setName('Biank');
 app.setPath('userData',join(root,'electron-profile'));
 app.whenReady().then(()=>{
+ if(process.env.BIANK_REQUIRE_PACKAGED_FIXTURE==='1'&&(!app.isPackaged||app.getName()!=='Biank'))throw Error('Packaged Biank identity required');
  if(!safeStorage.isEncryptionAvailable())throw Error('Electron safeStorage unavailable');
  mkdirSync(join(root,'secrets'),{recursive:true});
  const key=randomBytes(32),nonce=randomBytes(12),plain=randomBytes(48);
