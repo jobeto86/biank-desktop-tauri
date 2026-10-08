@@ -32,3 +32,7 @@ resuelve esas identidades: la firma updater no es un certificado Authenticode ni
 notarización Apple.
 No se aprovisionaron esas identidades, promovieron releases, fusionaron ramas
 ni sustituyeron instalaciones de clientes.
+
+Windows rechazó el fixture firmado después de que Git lo convirtiera a CRLF.
+`.gitattributes` conserva sus bytes mediante `-text`; no se relaja la firma.
+El workflow permite repetir Windows sin reconstruir macOS.
