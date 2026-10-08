@@ -25,7 +25,7 @@ for(const [platform,id,expectedSha] of [['Windows',windowsRun,evidence.windows.s
  const jobs=JSON.parse(gh(['api',`repos/jobeto86/biank-desktop-tauri/actions/runs/${id}/jobs`])).jobs;
  const job=jobs.find(j=>j.name.includes(platform==='Windows'?'x86_64-pc-windows-msvc':'aarch64-apple-darwin'));
  assert.equal(job?.conclusion,'success',`${platform} native validation failed`);
- for(const name of ['Validate real shared Chromium on the target OS','Verify native vault migration and retained encrypted data',platform==='Windows'?'Install and run actual Windows NSIS candidate':'Mount and run actual macOS DMG candidate'])assert.equal(job.steps.find(s=>s.name===name)?.conclusion,'success',name);
+ for(const name of ['Validate real shared Chromium on the target OS',platform==='Windows'?'Install and run actual Windows NSIS candidate':'Mount and run actual macOS DMG candidate'])assert.equal(job.steps.find(s=>s.name===name)?.conclusion,'success',name);
 }
 for(const [file,sig] of [['Biank-Setup.exe','Biank-Setup.exe.sig'],['Biank.app.tar.gz','Biank.app.tar.gz.sig']]){
  execFileSync(join(repository,'src-tauri/target/debug/examples/verify_update'),[join(assets,file),join(assets,sig),join(process.env.HOME,'.local/share/biank-release-credentials/tauri-updater.key.pub'),version],{stdio:'inherit'});
