@@ -11,8 +11,8 @@ const runtime=join(desktop,'dist/coordinator-runtime');
 if(!existsSync(join(runtime,'index.mjs')))throw Error('Construye y prepara el runtime del core antes de empaquetar Tauri.');
 if(!existsSync(join(desktop,'dist/web-vite/index.html')))throw Error('Falta el frontend compilado del core.');
 mkdirSync(output,{recursive:true});
-// Tauri's macOS resource copier materializes symlinks. Normalize before hashing
-// so the compiled manifest describes exactly the installed bytes.
+// Preserve framework aliases. macOS custom files copy directories with links,
+// unlike the generic resource mapping; the manifest describes installed bytes.
 copyRuntime(runtime,join(output,'coordinator'),process.platform);
 cpSync(join(desktop,'dist/web-vite'),join(output,'web'),{recursive:true});
 mkdirSync(join(output,'node'),{recursive:true});

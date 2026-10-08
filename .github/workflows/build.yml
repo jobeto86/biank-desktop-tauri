@@ -106,7 +106,7 @@ jobs:
         shell: bash
         run: |
           cargo build --manifest-path src-tauri/Cargo.toml --locked
-          node -e 'require("node:fs").cpSync("src-tauri/runtime",process.env.RUNNER_TEMP+"/Biank-Isolated-Resources/runtime",{recursive:true})'
+          node -e 'require("node:fs").cpSync("src-tauri/runtime",process.env.RUNNER_TEMP+"/Biank-Isolated-Resources/runtime",{recursive:true,verbatimSymlinks:true})'
           export BIANK_TAURI_TEST_RESOURCE_ROOT="$RUNNER_TEMP/Biank-Isolated-Resources"
           if [[ "$RUNNER_OS" == Windows ]]; then executable=src-tauri/target/debug/biank-desktop.exe; else executable=src-tauri/target/debug/biank-desktop; fi
           node tools/validate-installed.mjs "$executable" "$BIANK_TAURI_TEST_RESOURCE_ROOT/runtime"
@@ -146,6 +146,15 @@ jobs:
           codesign --verify --deep --strict --verbose=2 "$RUNNER_TEMP/Biank-Installed-QA.app"
           codesign --display --verbose=4 "$RUNNER_TEMP/Biank-Installed-QA.app" 2>&1 | grep -Fx 'Signature=adhoc'
           node tools/validate-installed.mjs "$RUNNER_TEMP/Biank-Installed-QA.app/Contents/MacOS/biank-desktop"
+          node tools/assess-macos.mjs "$RUNNER_TEMP/Biank-Installed-QA.app" "$RUNNER_TEMP/macos-trust.json"
+      - name: Retain macOS trust assessment
+        if: runner.os == 'macOS'
+        uses: actions/upload-artifact@v4
+        with:
+          name: Biank-macOS-trust
+          path: ${{ runner.temp }}/macos-trust.json
+          if-no-files-found: error
+          retention-days: 3
       - name: Retain candidate for review
         uses: actions/upload-artifact@v4
         with:
