@@ -1,0 +1,25 @@
+{
+  "version": "0.3.2",
+  "checkedAt": "2026-10-08T17:53:15.791664+00:00",
+  "runtime": "real Tauri updater plugin on Linux ARM64; actual installers validated separately on native OS",
+  "scope": "public latest manifest, full download, signature, signed version and SHA256; no installation or future-version upgrade simulated",
+  "targets": [
+    {
+      "target": "windows-x86_64",
+      "status": "PASS",
+      "sha256": "68dbf6acf052a414f4cf802a153aaea78d99b2f09e0f8d730f51ad61d94e2225",
+      "marker": "Native updater manifest/download/signature/version/SHA256: PASS (windows-x86_64)"
+    },
+    {
+      "target": "darwin-aarch64",
+      "status": "PASS",
+      "sha256": "ba4175848800a4fc7f0f37d3ba8de4933bb4c560553765e9e264f960a6fdbe2e",
+      "marker": "Native updater manifest/download/signature/version/SHA256: PASS (darwin-aarch64)"
+    }
+  ],
+  "publicDMG": {
+    "status": "PASS",
+    "sha256": "43a99346f6c281cd3bd7acc544e8c603068ac3f83a3ced6aafab4bf10a7d89a4"
+  },
+  "publicInstallerAliasesHTTP": 206
+}

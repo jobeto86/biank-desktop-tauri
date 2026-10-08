@@ -59,8 +59,8 @@ las firmas finales, sube un draft completo y sólo entonces lo promueve a latest
 
 ## Validación
 
-[Biank Desktop 0.3.1 está publicado](https://github.com/jobeto86/biank-desktop/releases/tag/v0.3.1).
-Consulta [la validación de los instaladores](docs/release-0.3.1.md),
+[Biank Desktop 0.3.2 está publicado](https://github.com/jobeto86/biank-desktop/releases/tag/v0.3.2).
+Consulta [la validación de los instaladores](docs/release-0.3.2.md),
 [el smoke nativo local](docs/validation-2026-10-07.md) y
 [la decisión de navegador](docs/browser-design.md). La migración completa de
 una instalación cliente Electron no forma parte de la certificación del release.
