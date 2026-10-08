@@ -21,3 +21,31 @@ serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 dirs = "6.0"
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+axum = "0.8"
+reqwest = { version = "0.12", default-features = false, features = ["json", "stream", "rustls-tls"] }
+rand = "0.8"
+base64 = "0.22"
+zeroize = "1"
+keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service"] }
+tauri-plugin-single-instance = "2"
+tauri-plugin-updater = "2"
+sha2 = "0.10"
+cookie = "0.18"
+aes-gcm = "0.10"
+dunce = "1"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.59", features = ["Win32_Security_Cryptography", "Win32_System_Memory", "Win32_Foundation"] }
+
+[target.'cfg(target_os = "macos")'.dependencies]
+security-framework = "3.7"
+aes = "0.8"
+cbc = { version = "0.1", features = ["alloc", "block-padding"] }
+pbkdf2 = "0.12"
+sha1 = "0.10"
+
+[profile.dev.package.sha2]
+opt-level = 3
+
+[dev-dependencies]
+minisign-verify = "0.2.5"
