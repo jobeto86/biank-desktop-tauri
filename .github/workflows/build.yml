@@ -60,6 +60,9 @@ jobs:
         with:
           workspaces: src-tauri -> target
       - run: npm ci
+      - name: Check macOS resource normalization
+        if: runner.os == 'macOS'
+        run: node --test tools/runtime-links.test.mjs
       - name: Build exact coordinator and platform runtime
         working-directory: .core/apps/desktop/coordinator
         run: |

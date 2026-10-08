@@ -19,7 +19,13 @@ Roberto autorizó configurar el grant y la firma («Sí»).
   El ZIP de Actions incluía también el app sin comprimir (2.6 GB); el workflow
   conserva ahora sólo los formatos instalables y updater con sus firmas.
 - Build inicial: https://github.com/jobeto86/biank-desktop-tauri/actions/runs/37769690408
-  Estado pendiente de resultado; no equivale a instalador validado.
+  macOS compiló y su firma/verificación de versión pasó. La auditoría del
+  tar.gz detectó enlaces Chromium materializados por el bundler y un manifiesto
+  incompatible: ese candidato falla integridad y no se distribuye.
+- Corrección: normalizar enlaces macOS antes de sellar el manifiesto. Un test
+  reproduce framework Versions/Current y verifica archivos materializados,
+  preservación en Linux y rechazo de enlaces externos. Se evita el fast path
+  de copia de Node 22.22.1 que retenía enlaces pese a dereference:true.
 
 Electron también permite firma Authenticode/Developer ID. Adoptar Tauri no
 resuelve esas identidades: la firma updater no es un certificado Authenticode ni

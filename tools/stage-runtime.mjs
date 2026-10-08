@@ -1,3 +1,4 @@
+import {copyRuntime} from './runtime-links.mjs';
 import {cpSync,existsSync,mkdirSync,mkdtempSync,copyFileSync,chmodSync,readFileSync,writeFileSync,readdirSync,lstatSync,realpathSync,readlinkSync,renameSync,rmSync} from 'node:fs';
 import {resolve,dirname,join,relative as pathRelative,isAbsolute} from 'node:path';
 import {fileURLToPath} from 'node:url';
@@ -10,7 +11,9 @@ const runtime=join(desktop,'dist/coordinator-runtime');
 if(!existsSync(join(runtime,'index.mjs')))throw Error('Construye y prepara el runtime del core antes de empaquetar Tauri.');
 if(!existsSync(join(desktop,'dist/web-vite/index.html')))throw Error('Falta el frontend compilado del core.');
 mkdirSync(output,{recursive:true});
-cpSync(runtime,join(output,'coordinator'),{recursive:true,verbatimSymlinks:true});
+// Tauri's macOS resource copier materializes symlinks. Normalize before hashing
+// so the compiled manifest describes exactly the installed bytes.
+copyRuntime(runtime,join(output,'coordinator'),process.platform);
 cpSync(join(desktop,'dist/web-vite'),join(output,'web'),{recursive:true});
 mkdirSync(join(output,'node'),{recursive:true});
 const node=join(output,'node',process.platform==='win32'?'node.exe':'node');copyFileSync(process.execPath,node);chmodSync(node,0o755);
