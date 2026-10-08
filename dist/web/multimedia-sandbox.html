@@ -1,0 +1,16 @@
+<!doctype html>
+<html lang="es"><meta charset="utf-8"><meta name="referrer" content="no-referrer"><title>Vista web aislada</title>
+<style>html,body,iframe{margin:0;width:100%;height:100%;border:0}body{overflow:hidden}</style>
+<body><script>
+// No runtime URL, bearer, workspace, storage or parent DOM is exposed here.
+addEventListener('message', event => {
+  if (event.source !== parent || event.data?.type !== 'biank.desktop.web-preview' || typeof event.data.html !== 'string' || event.data.html.length > 25000000) return;
+  const frame = document.createElement('iframe');
+  frame.setAttribute('sandbox', event.data.interactive === true ? 'allow-scripts' : '');
+  frame.referrerPolicy = 'no-referrer';
+  frame.title = 'Contenido web interactivo';
+  frame.srcdoc = '<!doctype html><meta http-equiv="Content-Security-Policy" content="default-src \'none\'; script-src \'unsafe-inline\'; style-src \'unsafe-inline\'; img-src data: blob:; media-src data: blob:; connect-src \'none\'; base-uri \'none\'; form-action \'none\'"><meta name="referrer" content="no-referrer">' + event.data.html;
+  document.body.replaceChildren(frame);
+  parent.postMessage({ type: 'biank.desktop.web-rendered', interactive: event.data.interactive }, '*');
+});
+</script></body></html>

@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" role="img" aria-label="Biank">
+  <defs>
+    <linearGradient id="background" x1="72" y1="52" x2="442" y2="466" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#241730"/>
+      <stop offset="0.58" stop-color="#15101e"/>
+      <stop offset="1" stop-color="#0b0910"/>
+    </linearGradient>
+    <linearGradient id="biank" x1="142" y1="104" x2="402" y2="414" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#efd9ff"/>
+      <stop offset="0.5" stop-color="#b995e6"/>
+      <stop offset="1" stop-color="#e489a6"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0" cy="0" r="1" gradientTransform="translate(282 252) rotate(90) scale(230)" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#a777d8" stop-opacity="0.24"/>
+      <stop offset="1" stop-color="#a777d8" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="512" height="512" rx="116" fill="url(#background)"/>
+  <circle cx="282" cy="252" r="230" fill="url(#glow)"/>
+  <g fill="none" stroke="url(#biank)" stroke-width="42" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M152 112v288"/>
+    <path d="M154 119h82c87 0 137 34 137 94 0 59-50 85-137 85h-82"/>
+    <path d="M154 281h95c93 0 149 34 149 99 0 61-55 76-149 76h-95"/>
+  </g>
+  <circle cx="397" cy="110" r="13" fill="#f1c4d3"/>
+  <rect x="2" y="2" width="508" height="508" rx="114" fill="none" stroke="#fff" stroke-opacity="0.08" stroke-width="4"/>
+</svg>

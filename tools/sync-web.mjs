@@ -9,7 +9,11 @@ const sourceWeb = path.resolve(rootDir, '../biank/apps/desktop/dist/web-vite');
 const targetWeb = path.resolve(rootDir, 'dist/web');
 
 if (!fs.existsSync(sourceWeb)) {
-  console.error(`Error: No se encontró el directorio de origen en ${sourceWeb}`);
+  if (fs.existsSync(targetWeb) && fs.existsSync(path.join(targetWeb, 'index.html'))) {
+    console.log(`✓ Usando frontend existente en ${targetWeb} (entorno CI o standalone).`);
+    process.exit(0);
+  }
+  console.error(`Error: No se encontró el frontend en ${sourceWeb} ni en ${targetWeb}`);
   process.exit(1);
 }
 

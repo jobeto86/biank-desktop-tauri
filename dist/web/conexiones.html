@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Conexiones · Biank</title>  <script type="module" crossorigin src="/assets/conexiones-BkKgSuhn.js"></script>
+  <link rel="modulepreload" crossorigin href="/assets/integration-manager-C4nGZ3Cp.js">
+  <link rel="stylesheet" crossorigin href="/assets/conexiones-C9dDBDJF.css">
+</head>
+<body><main id="connections"><header><a href="/">← Volver al agente</a><h1>Conexiones</h1>
+<p>Las cuentas que tu agente puede usar, contigo y entre conversaciones.</p></header>
+<p id="connectionNotice" role="status"></p><section id="connectionCatalog" aria-label="Catálogo de conexiones"></section>
+<details id="cbsuiteSetup" hidden><summary>Conectar CBSuite como Master Admin</summary>
+<p>Autoriza acceso administrativo para el agente de esta conversación. Biank Desktop guarda un token cifrado; no conserva tu contraseña.</p>
+<form id="cbsuiteForm"><label>Usuario<input name="username" autocomplete="username" required maxlength="200"></label>
+<label>Contraseña<input name="password" type="password" autocomplete="current-password" required maxlength="4096"></label>
+<button type="submit">Conectar Master Admin</button><p id="cbsuiteNotice" role="status"></p></form></details>
+<details id="connectionSetup"><summary>Configurar Google para esta instalación</summary>
+<p>Se configura una vez. Después, cada cuenta elige sus permisos en Google.</p>
+<form id="connectionSetupForm"><label>Archivo de aplicación OAuth de Google<input id="connectionClient" type="file" accept="application/json,.json" required></label>
+<label>Dirección de retorno registrada en Google<input id="connectionRedirect" type="url" required autocomplete="off"></label>
+<button type="submit">Guardar configuración segura</button><p>El archivo se guarda cifrado en Biank Desktop. No lo pegues en la conversación.</p></form></details>
+</main></body></html>

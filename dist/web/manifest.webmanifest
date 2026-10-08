@@ -1,0 +1,30 @@
+{
+  "name": "Biank",
+  "short_name": "Biank",
+  "description": "Tu compañera de armas, Powered by CB Inteligencia.",
+  "start_url": "/app",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0b0910",
+  "theme_color": "#0b0910",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/biank-app-v2.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/biank-app-v2-192.png",
+      "sizes": "192x192",
+      "type": "image/png"
+    },
+    {
+      "src": "/biank-app-v2-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
