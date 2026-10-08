@@ -113,6 +113,12 @@ jobs:
         shell: bash
         run: |
           mkdir -p "$RUNNER_TEMP/biank-migration"
+          # Ephemeral QA keychain only. No client credential is read or changed.
+          security create-keychain -p '' "$RUNNER_TEMP/Biank-QA.keychain-db"
+          security unlock-keychain -p '' "$RUNNER_TEMP/Biank-QA.keychain-db"
+          security set-keychain-settings -lut 3600 "$RUNNER_TEMP/Biank-QA.keychain-db"
+          security list-keychains -d user -s "$RUNNER_TEMP/Biank-QA.keychain-db"
+          security default-keychain -d user -s "$RUNNER_TEMP/Biank-QA.keychain-db"
           node -e 'require("./.core/apps/desktop/desktop/node_modules/electron")'
           ditto .core/apps/desktop/desktop/node_modules/electron/dist/Electron.app "$RUNNER_TEMP/Biank-Migration-Fixture.app"
           mkdir -p "$RUNNER_TEMP/Biank-Migration-Fixture.app/Contents/Resources/app"
@@ -125,7 +131,11 @@ jobs:
           codesign --force --deep --sign - "$RUNNER_TEMP/Biank-Migration-Fixture.app"
           BIANK_MIGRATION_FIXTURE_ROOT="$RUNNER_TEMP/biank-migration" BIANK_REQUIRE_PACKAGED_FIXTURE=1 "$RUNNER_TEMP/Biank-Migration-Fixture.app/Contents/MacOS/Biank"
           test -f "$RUNNER_TEMP/biank-migration/secrets/vault.key.sealed"
+          # Simulate consent for the unsigned test executable without replacing
+          # Electron's key or mocking encryption. Real clients retain OS prompts.
+          security set-generic-password-partition-list -S 'unsigned:,apple-tool:,apple:' -a 'Biank Key' -s 'Biank Safe Storage' -k '' "$RUNNER_TEMP/Biank-QA.keychain-db" >/dev/null
       - name: Verify native vault migration and retained encrypted data
+        timeout-minutes: 5
         env:
           BIANK_ELECTRON_USER_DATA: ${{ runner.temp }}/biank-migration/electron-profile
           BIANK_DESKTOP_CONFIG_ROOT: ${{ runner.temp }}/biank-migration/config
