@@ -1,5 +1,8 @@
 # CI Tauri habilitado — 2026-10-08
 
+Checkpoint histórico de los primeros candidatos. Los resultados posteriores
+están en [la validación del release 0.3.0](release-0.3.0.md).
+
 Roberto autorizó configurar el grant y la firma («Sí»).
 
 - Deploy key SSH read-only en el core `jobeto86/biank`; el satélite recibe su
