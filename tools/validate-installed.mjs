@@ -1,16 +1,29 @@
 import {spawn,execFileSync} from 'node:child_process';
-import {mkdtempSync,existsSync,readFileSync,openSync,closeSync,writeFileSync} from 'node:fs';
+import {mkdtempSync,existsSync,readFileSync,openSync,closeSync,writeFileSync,mkdirSync,readdirSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join,resolve} from 'node:path';
 import assert from 'node:assert/strict';
 import {randomBytes} from 'node:crypto';
 const executable=resolve(process.argv[2]);
 const root=mkdtempSync(join(tmpdir(),'biank-installed-'));
+// Upgrade QA: a profile left by an earlier version forces the pre-migration backup.
+// Large enough that the backup outlasts the retired fixed 120 s startup deadline.
+const upgradeMb=Number(process.env.BIANK_QA_UPGRADE_PROFILE_MB||0);
+if(upgradeMb>0){
+ writeFileSync(join(root,'desktop-version.json'),JSON.stringify({version:process.env.BIANK_QA_UPGRADE_FROM||'0.3.5',backup:null}));
+ const chunk=randomBytes(256*1024);
+ for(let i=0;i<upgradeMb*4;i++){
+  const dir=join(root,'workspace','qa-upgrade-profile',String(Math.floor(i/500)));
+  if(i%500===0)mkdirSync(dir,{recursive:true});
+  writeFileSync(join(dir,i+'.bin'),Buffer.concat([chunk,Buffer.from(String(i))]));
+ }
+}
+const startedAt=Date.now();
 const log=openSync(join(root,'shell.log'),'a');
 const child=spawn(executable,[],{env:{...process.env,BIANK_DATA_ROOT:root,BIANK_DESKTOP_CONFIG_ROOT:join(root,'config')},stdio:['ignore',log,log]});closeSync(log);
 let connection;
 try{
- const deadline=Date.now()+150000;
+ const deadline=Date.now()+(upgradeMb>0?660000:150000);
  while(Date.now()<deadline){
   if(child.exitCode!==null)throw Error(`Installed shell exited ${child.exitCode}`);
   try{
@@ -30,7 +43,15 @@ try{
  assert.match(readFileSync(join(root,'logs/shell.log'),'utf8'),/biank-shell: ventana principal lista/,'Native webview did not initialize');
  const runtime=process.argv[3]?resolve(process.argv[3]):join(process.platform==='darwin'?resolve(executable,'../../Resources'):resolve(executable,'..'),'runtime');
  execFileSync(join(runtime,'codex',process.platform==='win32'?'codex.exe':'codex'),['--version'],{stdio:'pipe'});
- console.log(JSON.stringify({status:'PASS',installedEngine:true,nativeWindow:true,bundledCodex:true,evidence:root}));
+ let upgrade;
+ if(upgradeMb>0){
+  const marker=JSON.parse(readFileSync(join(root,'desktop-version.json'),'utf8'));
+  assert.notEqual(marker.version,process.env.BIANK_QA_UPGRADE_FROM||'0.3.5','Version marker was not advanced after the upgrade backup');
+  assert.ok(marker.backup&&existsSync(marker.backup),'Pre-migration backup was not published');
+  assert.deepEqual(readdirSync(join(root,'backups')).filter(name=>name.startsWith('.snapshot-')),[],'An unpublished backup staging remained');
+  upgrade={profileMb:upgradeMb,startupSeconds:Math.round((Date.now()-startedAt)/1000),version:marker.version};
+ }
+ console.log(JSON.stringify({status:'PASS',installedEngine:true,nativeWindow:true,bundledCodex:true,...(upgrade?{upgrade}:{}),evidence:root}));
  writeFileSync(join(root,'result.json'),JSON.stringify({status:'PASS',installedEngine:true,nativeWindow:true,bundledCodex:true})+'\n');
 }catch(error){
  // Only the Rust shell's controlled bootstrap messages; no engine tokens/logs.

@@ -30,7 +30,7 @@ jobs:
       matrix:
         include: ${{ fromJSON(inputs.windows_only && '[{"platform":"windows-latest","target":"x86_64-pc-windows-msvc","cloud_platform":"win","arch":"x64","bundles":"nsis"}]' || inputs.macos_only && '[{"platform":"macos-15","target":"aarch64-apple-darwin","cloud_platform":"mac","arch":"arm64","bundles":"app,dmg"}]' || '[{"platform":"windows-latest","target":"x86_64-pc-windows-msvc","cloud_platform":"win","arch":"x64","bundles":"nsis"},{"platform":"macos-15","target":"aarch64-apple-darwin","cloud_platform":"mac","arch":"arm64","bundles":"app,dmg"}]') }}
     runs-on: ${{ matrix.platform }}
-    timeout-minutes: 60
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v4
       - name: Require immutable core and scoped read grant
@@ -143,6 +143,16 @@ jobs:
           if ($installed.ExitCode -ne 0) { throw "NSIS installation failed: $($installed.ExitCode)" }
           node tools/validate-installed.mjs "$destination/biank-desktop.exe"
           if ($LASTEXITCODE -ne 0) { throw 'Installed Windows validation failed' }
+      - name: Upgrade from 0.3.5 with a large profile on the installed Windows candidate
+        if: runner.os == 'Windows'
+        shell: pwsh
+        env:
+          BIANK_QA_UPGRADE_PROFILE_MB: '3072'
+          BIANK_QA_UPGRADE_FROM: '0.3.5'
+        run: |
+          $destination = Join-Path $env:RUNNER_TEMP 'Biank-Installed-QA'
+          node tools/validate-installed.mjs "$destination/biank-desktop.exe"
+          if ($LASTEXITCODE -ne 0) { throw 'Large-profile upgrade startup failed' }
       - name: Mount and run actual macOS DMG candidate
         if: runner.os == 'macOS'
         shell: bash
