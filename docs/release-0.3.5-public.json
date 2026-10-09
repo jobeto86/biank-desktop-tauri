@@ -1,0 +1,21 @@
+{
+  "version": "0.3.5",
+  "url": "https://github.com/jobeto86/biank-desktop/releases/tag/v0.3.5",
+  "publishedAt": "2026-10-09T02:14:51Z",
+  "sourceShell": "f592c302b5e951487d2b841fc7df8ad42c0abc1a",
+  "sourceCore": "26c2bb8d1dbbb1656219e2ff9002581936f256db",
+  "runId": 37872484788,
+  "windowsRustTests": 10,
+  "macosRustTests": 9,
+  "windowsInstalledStartup": "PASS",
+  "macosInstalledStartup": "PASS",
+  "publicManifest": "PASS",
+  "publicAliasWindows": "HTTP 206",
+  "publicAliasMacos": "HTTP 206",
+  "publicDownloadSignatureVersionSha256": {
+    "Biank-Setup.exe": "7b9276f3be60c01f91744917bc1834574ab38b57e82a8c2857f7ee7a0af3ba56",
+    "Biank.app.tar.gz": "bc3c494b0bda0de57daddcd132159ae256fbbd2176aaaaca6030523ae5680ddd"
+  },
+  "nativeUpdaterReplayOnWorkstation": "BLOCKED by local GLX/driver initialization; direct full downloads and cryptographic verification passed",
+  "customerRecovery": "unverified"
+}

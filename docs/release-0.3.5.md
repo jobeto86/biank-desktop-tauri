@@ -22,4 +22,17 @@ Las fases sólo se aceptan si el PID corresponde al hijo propio; texto mostrado
 por fase acotado, sin rutas ni datos de bóveda. Se mantienen respaldo,
 verificación criptográfica, aislamiento, timeout de arranque y canal updater.
 
-Builds nativos y verificación pública se registran al terminar la publicación.
+Publicado como latest: https://github.com/jobeto86/biank-desktop/releases/tag/v0.3.5.
+Fuente shell f592c30, core 26c2bb8, run 37872484788 SUCCESS en ambos targets.
+Windows: 10 pruebas Rust y DPAPI real PASS, NSIS instalado y arranque PASS.
+macOS: 9 pruebas Rust PASS, DMG montado/copias y arranque PASS.
+Firmas updater vinculadas a 0.3.5 y Authenticode de desarrollo con timestamp
+RFC3161 PASS. Nueve assets públicos con tamaño exacto, manifiesto idéntico,
+aliases de instaladores HTTP 206, descarga completa Windows y tar macOS con
+SHA256/firma/versión PASS. Recibo: release-0.3.5-public.json.
+
+La reproducción local del plugin updater no llegó a inicializar GTK/GLX:
+el driver de esta estación falló incluso con renderizado software. Se detuvo
+esa QA sintética y se verificaron las descargas completas y firmas directamente;
+no se afirma PASS del plugin local. Los gates de instalación nativos sí pasaron.
+No se confirma recuperación del equipo de Pablo ni se cierra CUR-260.
