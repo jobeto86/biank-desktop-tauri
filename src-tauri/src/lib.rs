@@ -216,7 +216,14 @@ fn data_root() -> Result<(PathBuf, bool), String> {
     };
     Ok((base.join("Biank"), false))
 }
+fn startup_status(app: &AppHandle, phase: &str, detail: &str) {
+    if let Some(window) = app.get_webview_window("startup") {
+        let value = json!({"phase":phase,"detail":detail});
+        let _ = window.eval(&format!("window.biankStartup?.update({value})"));
+    }
+}
 async fn start(app: AppHandle) -> Result<(), String> {
+    startup_status(&app, "resources", "Verificando la instalación…");
     shell_log("biank-shell: verificando runtime");
     let (root, development) = data_root()?;
     let resources = if cfg!(debug_assertions) {
@@ -239,8 +246,10 @@ async fn start(app: AppHandle) -> Result<(), String> {
     let resources = dunce::simplified(&resources).to_path_buf();
     resources::verify(&resources.join("runtime"))?;
     shell_log("biank-shell: runtime verificado");
+    startup_status(&app, "vault", "Abriendo tu almacén seguro…");
     let key = vault::open(&root, development)?;
     shell_log("biank-shell: llave disponible");
+    startup_status(&app, "starting", "Iniciando Biank…");
     let supervisor = engine::Supervisor::start(
         engine::Config {
             root,
@@ -249,8 +258,10 @@ async fn start(app: AppHandle) -> Result<(), String> {
             development,
         },
         key,
+        |phase, detail| startup_status(&app, phase, detail),
     )
     .await?;
+    startup_status(&app, "ready", "Abriendo Biank…");
     shell_log("biank-shell: motor verificado");
     let connection = supervisor.connection.clone();
     app.manage(Desktop {
@@ -312,6 +323,7 @@ async fn start(app: AppHandle) -> Result<(), String> {
         })();
         if let Err(error) = result {
             shell_log("biank-shell: no se pudo crear la ventana principal");
+            startup_status(&handle, "error", &error.to_string());
             let _ = handle.emit("biank-startup-error", error.to_string());
         }
     })
@@ -374,13 +386,7 @@ pub fn run() {
                     .store(false, Ordering::SeqCst);
                 if let Err(error) = result {
                     shell_log(&format!("biank-shell: {error}"));
-                    if let Some(window) = handle.get_webview_window("startup") {
-                        let script = format!(
-                            "document.getElementById('status').textContent={}",
-                            serde_json::to_string(&error).unwrap()
-                        );
-                        let _ = window.eval(&script);
-                    }
+                    startup_status(&handle, "error", &error);
                 }
             });
             Ok(())

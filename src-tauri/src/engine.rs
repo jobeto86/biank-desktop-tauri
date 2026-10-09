@@ -111,7 +111,11 @@ fn reserve_local_port(previous: u16, explicit: Option<u16>) -> Result<TcpListene
     TcpListener::bind("127.0.0.1:0").map_err(|_| "No hay puerto local".into())
 }
 impl Supervisor {
-    pub async fn start(config: Config, mut key: Option<Vec<u8>>) -> Result<Self, String> {
+    pub async fn start(
+        config: Config,
+        mut key: Option<Vec<u8>>,
+        mut progress: impl FnMut(&str, &str),
+    ) -> Result<Self, String> {
         let runtime = config.resources.join("runtime");
         let script = runtime.join("coordinator/index.mjs");
         let node = runtime.join(if cfg!(windows) {
@@ -270,6 +274,11 @@ impl Supervisor {
         }
         let deadline = Instant::now() + Duration::from_secs(120);
         while Instant::now() < deadline {
+            if let Ok(raw) = fs::read(config.root.join("runtime-phase.json")) {
+                if let Some((phase, detail)) = startup_phase(&raw, child.id()) {
+                    progress(phase, &detail);
+                }
+            }
             if let Some(status) = child
                 .try_wait()
                 .map_err(|_| "No se pudo observar el motor")?
@@ -291,9 +300,71 @@ impl Supervisor {
         Err("El motor no inició en el plazo previsto. Se conservan tus datos.".into())
     }
 }
+// Only accept phase evidence from the child owned by this startup. Never expose
+// paths or arbitrary log text in the splash.
+fn startup_phase(raw: &[u8], pid: u32) -> Option<(&'static str, String)> {
+    let value: Value = serde_json::from_slice(raw).ok()?;
+    if value["pid"].as_u64()? != u64::from(pid) {
+        return None;
+    }
+    let phase = value["phase"].as_str()?;
+    let detail = value["detail"].as_str().unwrap_or("");
+    let message = match phase {
+        "starting" => "Iniciando Biank…".to_string(),
+        "snapshot" if detail.starts_with("Calculando sumas criptográficas (") => {
+            let count = detail
+                .split('(')
+                .nth(1)?
+                .split_whitespace()
+                .next()?
+                .parse::<u64>()
+                .ok()?;
+            format!("Verificando tus datos · {count} archivos revisados")
+        }
+        "snapshot" if detail.starts_with("Copiando archivos") => {
+            "Guardando una copia de seguridad de tus datos…".to_string()
+        }
+        "snapshot" if detail.starts_with("Verificando integridad") => {
+            "Comprobando la copia de seguridad…".to_string()
+        }
+        "snapshot" => "Preparando una copia de seguridad antes de actualizar…".to_string(),
+        "profiles" => "Preparando tu perfil y tus datos…".to_string(),
+        "binding" => "Iniciando los servicios de Biank…".to_string(),
+        "ready" => "Abriendo Biank…".to_string(),
+        _ => return None,
+    };
+    let phase = match phase {
+        "starting" => "starting",
+        "snapshot" => "snapshot",
+        "profiles" => "profiles",
+        "binding" => "binding",
+        "ready" => "ready",
+        _ => return None,
+    };
+    Some((phase, message))
+}
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn startup_progress_is_bound_to_child_and_does_not_expose_arbitrary_details() {
+        let raw = json!({"pid":42,"phase":"snapshot","detail":"Calculando sumas criptográficas (120 archivos)..."}).to_string();
+        assert_eq!(
+            startup_phase(raw.as_bytes(), 42),
+            Some((
+                "snapshot",
+                "Verificando tus datos · 120 archivos revisados".into()
+            ))
+        );
+        assert!(startup_phase(raw.as_bytes(), 43).is_none());
+        assert!(startup_phase(b"partial-json", 42).is_none());
+        let raw = json!({"pid":42,"phase":"profiles","detail":"private file path"}).to_string();
+        assert_eq!(
+            startup_phase(raw.as_bytes(), 42).unwrap().1,
+            "Preparando tu perfil y tus datos…"
+        );
+        assert!(startup_phase(br#"{"pid":42,"phase":"unknown"}"#, 42).is_none());
+    }
     #[test]
     fn saved_port_survives_restart_and_a_busy_port_is_not_taken_over() {
         let first = reserve_local_port(0, None).unwrap();

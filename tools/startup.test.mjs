@@ -1,0 +1,22 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import {readFileSync} from 'node:fs';
+import vm from 'node:vm';
+test('startup shows real activity and a terminal error without implying backup completion', () => {
+  const elements = Object.fromEntries(['status','hint','elapsed','main'].map(id => [id, {textContent:'',setAttribute(name,value){this[name]=value;}}]));
+  let tick, cleared = false, now = 0;
+  const body = {dataset:{}};
+  const window = {};
+  const document = {body,getElementById:id=>elements[id],querySelector:()=>elements.main};
+  vm.runInNewContext(readFileSync(new URL('../shell/startup.js',import.meta.url),'utf8'), {window,document,Date:{now:()=>now},setInterval:fn=>{tick=fn;return 1;},clearInterval:()=>{cleared=true;}});
+  window.biankStartup.update({phase:'snapshot',detail:'Verificando tus datos · 120 archivos revisados'});
+  assert.match(elements.hint.textContent,/respaldar tus datos/);
+  assert.equal(elements.status.textContent,'Verificando tus datos · 120 archivos revisados');
+  now=82000;tick();assert.match(elements.elapsed.textContent,/1:22/);
+  window.biankStartup.update({phase:'profiles',detail:'Preparando tu perfil y tus datos…'});
+  assert.doesNotMatch(elements.hint.textContent,/respaldar/);
+  window.biankStartup.update({phase:'error',detail:'No se pudo leer el perfil'});
+  assert.equal(body.dataset.state,'error');assert.equal(elements.main['aria-busy'],'false');
+  window.biankStartup.update({phase:'ready',detail:'Abriendo Biank…'});
+  assert.equal(elements.status.textContent,'No se pudo leer el perfil');tick();assert.equal(cleared,true);
+});
