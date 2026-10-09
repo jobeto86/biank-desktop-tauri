@@ -8,12 +8,13 @@ const executable=resolve(process.argv[2]);
 const root=mkdtempSync(join(tmpdir(),'biank-installed-'));
 // Upgrade QA: a profile left by an earlier version forces the pre-migration backup.
 // Large enough that the backup outlasts the retired fixed 120 s startup deadline.
+// Under data/: backed up like any profile, but not personal data that needs a verified owner.
 const upgradeMb=Number(process.env.BIANK_QA_UPGRADE_PROFILE_MB||0);
 if(upgradeMb>0){
  writeFileSync(join(root,'desktop-version.json'),JSON.stringify({version:process.env.BIANK_QA_UPGRADE_FROM||'0.3.5',backup:null}));
  const chunk=randomBytes(256*1024);
  for(let i=0;i<upgradeMb*4;i++){
-  const dir=join(root,'workspace','qa-upgrade-profile',String(Math.floor(i/500)));
+  const dir=join(root,'data','qa-upgrade-profile',String(Math.floor(i/500)));
   if(i%500===0)mkdirSync(dir,{recursive:true});
   writeFileSync(join(dir,i+'.bin'),Buffer.concat([chunk,Buffer.from(String(i))]));
  }
