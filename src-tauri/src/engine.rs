@@ -272,12 +272,24 @@ impl Supervisor {
                 return Err(e.into());
             }
         }
-        let deadline = Instant::now() + Duration::from_secs(120);
-        while Instant::now() < deadline {
+        let started = Instant::now();
+        let mut last_progress = started;
+        let mut last_evidence: Option<Vec<u8>> = None;
+        loop {
             if let Ok(raw) = fs::read(config.root.join("runtime-phase.json")) {
                 if let Some((phase, detail)) = startup_phase(&raw, child.id()) {
+                    // Each heartbeat rewrites the timestamp: changed evidence = alive.
+                    if last_evidence.as_deref() != Some(raw.as_slice()) {
+                        last_progress = Instant::now();
+                        last_evidence = Some(raw);
+                    }
                     progress(phase, &detail);
                 }
+            }
+            if let Some(reason) = startup_expired(started, last_progress, Instant::now()) {
+                let _ = child.kill();
+                let _ = child.wait();
+                return Err(reason.into());
             }
             if let Some(status) = child
                 .try_wait()
@@ -295,10 +307,20 @@ impl Supervisor {
             }
             tokio::time::sleep(Duration::from_millis(250)).await;
         }
-        let _ = child.kill();
-        let _ = child.wait();
-        Err("El motor no inició en el plazo previsto. Se conservan tus datos.".into())
     }
+}
+/// The pre-migration backup of a large profile can take minutes; a fixed deadline
+/// killed it mid-way and every launch repeated it. Only silence or the ceiling stop it.
+const STARTUP_STALL: Duration = Duration::from_secs(60);
+const STARTUP_CEILING: Duration = Duration::from_secs(600);
+fn startup_expired(started: Instant, last_progress: Instant, now: Instant) -> Option<&'static str> {
+    if now.duration_since(last_progress) > STARTUP_STALL {
+        return Some("El motor no acreditó su arranque tras 60 s sin actividad. Se conservan tus datos.");
+    }
+    if now.duration_since(started) > STARTUP_CEILING {
+        return Some("El arranque excedió el límite de seguridad (10 min). Se conservan tus datos.");
+    }
+    None
 }
 // Only accept phase evidence from the child owned by this startup. Never expose
 // paths or arbitrary log text in the splash.
@@ -364,6 +386,14 @@ mod tests {
             "Preparando tu perfil y tus datos…"
         );
         assert!(startup_phase(br#"{"pid":42,"phase":"unknown"}"#, 42).is_none());
+    }
+    #[test]
+    fn startup_survives_long_backup_with_progress_and_stops_on_silence_or_ceiling() {
+        let start = Instant::now();
+        let s = Duration::from_secs;
+        assert!(startup_expired(start, start + s(170), start + s(180)).is_none());
+        assert!(startup_expired(start, start + s(119), start + s(180)).unwrap().contains("60 s"));
+        assert!(startup_expired(start, start + s(600), start + s(601)).unwrap().contains("10 min"));
     }
     #[test]
     fn saved_port_survives_restart_and_a_busy_port_is_not_taken_over() {

@@ -1,6 +1,6 @@
 {
   "name": "biank-desktop-tauri",
-  "version": "0.3.5",
+  "version": "0.3.6",
   "private": true,
   "description": "Biank Desktop — Lightweight Native Shell powered by Tauri v2",
   "scripts": {
