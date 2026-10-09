@@ -64,7 +64,7 @@ jobs:
       - run: npm ci
       - name: Validate native account browser regression
         run: |
-          node --test tools/auth-bridge.test.mjs
+          node --test tools/auth-bridge.test.mjs tools/startup.test.mjs
           node --experimental-strip-types --test .core/apps/desktop/coordinator/test/account-native-browser.test.ts
       - name: Check macOS resource normalization
         if: runner.os == 'macOS'

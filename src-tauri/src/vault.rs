@@ -98,47 +98,75 @@ pub fn open(root: &Path, development: bool) -> Result<Option<Vec<u8>>, String> {
     // Keep old encrypted material for rollback; no destructive migration here.
     Ok(Some(key))
 }
-#[cfg(windows)]
-fn unseal_electron(raw: &[u8]) -> Result<Vec<u8>, String> {
+// An explicit original profile is authoritative. Otherwise Electron's packaged
+// product name and package name are both valid historical userData directories.
+#[cfg(any(windows, test))]
+fn electron_profiles(
+    explicit: Option<PathBuf>,
+    appdata: Option<PathBuf>,
+) -> Result<Vec<PathBuf>, String> {
+    if let Some(path) = explicit {
+        if !path.is_absolute() {
+            return Err("El perfil original de Electron debe ser una ruta absoluta".into());
+        }
+        return Ok(vec![path]);
+    }
+    let base = appdata
+        .filter(|p| p.is_absolute())
+        .ok_or("No se encontró el perfil original de Electron")?;
+    Ok(vec![base.join("Biank"), base.join("biank-desktop")])
+}
+
+#[cfg(any(windows, test))]
+fn recover_electron_v10(
+    raw: &[u8],
+    profiles: &[PathBuf],
+    mut unprotect: impl FnMut(&[u8]) -> Result<Vec<u8>, String>,
+) -> Result<Vec<u8>, String> {
     use aes_gcm::{
         aead::{Aead, KeyInit},
         Aes256Gcm, Nonce,
     };
-    if raw.starts_with(b"v10") {
-        if raw.len() < 3 + 12 + 16 {
-            return Err("Llave Electron truncada; se conservan los datos".into());
-        }
-        let user_data = std::env::var_os("BIANK_ELECTRON_USER_DATA")
-            .map(PathBuf::from)
-            .or_else(|| std::env::var_os("APPDATA").map(|p| PathBuf::from(p).join("Biank")))
-            .filter(|p| p.is_absolute())
-            .ok_or("No se encontró el perfil original de Electron")?;
-        let state: serde_json::Value = serde_json::from_slice(
-            &fs::read(user_data.join("Local State"))
-                .map_err(|_| "No se pudo leer Local State de Electron")?,
-        )
-        .map_err(|_| "Local State de Electron inválido")?;
-        let wrapped = base64::engine::general_purpose::STANDARD
-            .decode(
-                state["os_crypt"]["encrypted_key"]
-                    .as_str()
-                    .ok_or("Falta la llave original de Electron")?,
-            )
-            .map_err(|_| "Llave original de Electron inválida")?;
-        let wrapped = wrapped
-            .strip_prefix(b"DPAPI")
-            .ok_or("Formato original de Electron desconocido")?;
-        let mut key = unprotect_dpapi(wrapped)?;
-        let result = (|| {
-            let cipher = Aes256Gcm::new_from_slice(&key).map_err(|_| "Llave Electron inválida")?;
-            cipher
-                .decrypt(Nonce::from_slice(&raw[3..15]), &raw[15..])
-                .map_err(|_| {
-                    "No se pudo autenticar la llave Electron; se conservan los datos".into()
-                })
+    if !raw.starts_with(b"v10") || raw.len() < 3 + 12 + 16 {
+        return Err("Llave Electron truncada; se conservan los datos".into());
+    }
+    for profile in profiles {
+        let recovered = (|| {
+            let state: serde_json::Value =
+                serde_json::from_slice(&fs::read(profile.join("Local State")).map_err(|_| ())?)
+                    .map_err(|_| ())?;
+            let wrapped = base64::engine::general_purpose::STANDARD
+                .decode(state["os_crypt"]["encrypted_key"].as_str().ok_or(())?)
+                .map_err(|_| ())?;
+            let wrapped = wrapped.strip_prefix(b"DPAPI").ok_or(())?;
+            let mut key = unprotect(wrapped).map_err(|_| ())?;
+            let result = (|| {
+                let cipher = Aes256Gcm::new_from_slice(&key).map_err(|_| ())?;
+                let mut plaintext = cipher
+                    .decrypt(Nonce::from_slice(&raw[3..15]), &raw[15..])
+                    .map_err(|_| ())?;
+                let decoded = decode(&plaintext).map_err(|_| ());
+                plaintext.zeroize();
+                decoded
+            })();
+            key.zeroize();
+            result
         })();
-        key.zeroize();
-        return result;
+        if let Ok(key) = recovered {
+            return Ok(key);
+        }
+    }
+    Err("No se pudo recuperar la llave con el perfil original de Electron. Conserva Local State y las carpetas de Biank; no se creó otra llave.".into())
+}
+
+#[cfg(windows)]
+fn unseal_electron(raw: &[u8]) -> Result<Vec<u8>, String> {
+    if raw.starts_with(b"v10") {
+        let profiles = electron_profiles(
+            std::env::var_os("BIANK_ELECTRON_USER_DATA").map(PathBuf::from),
+            std::env::var_os("APPDATA").map(PathBuf::from),
+        )?;
+        return recover_electron_v10(raw, &profiles, unprotect_dpapi);
     }
     unprotect_dpapi(raw.strip_prefix(b"DPAPI").unwrap_or(raw))
 }
@@ -229,5 +257,132 @@ mod tests {
             decode(URL_SAFE_NO_PAD.encode(&key).as_bytes()).unwrap(),
             key
         );
+    }
+    fn fixture() -> (PathBuf, Vec<u8>, Vec<u8>) {
+        use aes_gcm::{
+            aead::{Aead, KeyInit},
+            Aes256Gcm, Nonce,
+        };
+        let root =
+            std::env::temp_dir().join(format!("biank-electron-vault-{}", rand::random::<u64>()));
+        fs::create_dir_all(&root).unwrap();
+        let master = vec![9; 32];
+        let nonce = [3; 12];
+        let encrypted = Aes256Gcm::new_from_slice(&[7; 32])
+            .unwrap()
+            .encrypt(
+                Nonce::from_slice(&nonce),
+                URL_SAFE_NO_PAD.encode(&master).as_bytes(),
+            )
+            .unwrap();
+        let mut sealed = b"v10".to_vec();
+        sealed.extend(nonce);
+        sealed.extend(encrypted);
+        (root, sealed, master)
+    }
+    fn state(profile: &Path, key: u8) {
+        fs::create_dir_all(profile).unwrap();
+        let mut wrapped = b"DPAPI".to_vec();
+        wrapped.extend([key; 32]);
+        fs::write(
+            profile.join("Local State"),
+            serde_json::json!({"os_crypt": {
+                "encrypted_key": base64::engine::general_purpose::STANDARD.encode(wrapped)
+            }})
+            .to_string(),
+        )
+        .unwrap();
+    }
+    #[test]
+    fn recovers_package_profile_when_product_profile_is_missing_or_has_another_key() {
+        let (root, sealed, master) = fixture();
+        let profiles = electron_profiles(None, Some(root.clone())).unwrap();
+        state(&profiles[1], 7);
+        let original = fs::read(profiles[1].join("Local State")).unwrap();
+        assert_eq!(
+            recover_electron_v10(&sealed, &profiles, |key| Ok(key.to_vec())).unwrap(),
+            master
+        );
+        state(&profiles[0], 8); // Present but cryptographically unrelated; never adopt it.
+        assert_eq!(
+            recover_electron_v10(&sealed, &profiles, |key| Ok(key.to_vec())).unwrap(),
+            master
+        );
+        assert_eq!(fs::read(profiles[1].join("Local State")).unwrap(), original);
+        fs::remove_dir_all(root).unwrap();
+    }
+    #[test]
+    fn explicit_profile_never_falls_back_and_failure_preserves_files() {
+        let (root, sealed, _) = fixture();
+        state(&root.join("biank-desktop"), 7);
+        let explicit = root.join("chosen-profile");
+        let profiles = electron_profiles(Some(explicit.clone()), Some(root.clone())).unwrap();
+        assert_eq!(profiles, vec![explicit.clone()]);
+        assert!(recover_electron_v10(&sealed, &profiles, |key| Ok(key.to_vec())).is_err());
+        assert!(!explicit.exists());
+        state(&explicit, 7);
+        assert!(
+            recover_electron_v10(&sealed, &profiles, |_| Err("DPAPI rejected".into())).is_err()
+        );
+        assert!(recover_electron_v10(b"v10", &profiles, |key| Ok(key.to_vec())).is_err());
+        assert!(electron_profiles(Some(PathBuf::from("relative")), Some(root.clone())).is_err());
+        fs::remove_dir_all(root).unwrap();
+    }
+    #[cfg(windows)]
+    #[test]
+    fn windows_recovers_with_real_dpapi_and_package_profile() {
+        use windows_sys::Win32::{
+            Foundation::LocalFree,
+            Security::Cryptography::{
+                CryptProtectData, CRYPTPROTECT_UI_FORBIDDEN, CRYPT_INTEGER_BLOB,
+            },
+        };
+        let (root, sealed, master) = fixture();
+        let mut key = [7u8; 32];
+        let mut input = CRYPT_INTEGER_BLOB {
+            cbData: 32,
+            pbData: key.as_mut_ptr(),
+        };
+        let mut output = CRYPT_INTEGER_BLOB {
+            cbData: 0,
+            pbData: std::ptr::null_mut(),
+        };
+        let wrapped = unsafe {
+            assert_ne!(
+                CryptProtectData(
+                    &mut input,
+                    std::ptr::null(),
+                    std::ptr::null(),
+                    std::ptr::null(),
+                    std::ptr::null(),
+                    CRYPTPROTECT_UI_FORBIDDEN,
+                    &mut output
+                ),
+                0
+            );
+            let mut bytes = b"DPAPI".to_vec();
+            bytes.extend_from_slice(std::slice::from_raw_parts(
+                output.pbData,
+                output.cbData as usize,
+            ));
+            LocalFree(output.pbData as _);
+            bytes
+        };
+        key.zeroize();
+        let profiles = electron_profiles(None, Some(root.clone())).unwrap();
+        fs::create_dir_all(&profiles[1]).unwrap();
+        fs::write(
+            profiles[1].join("Local State"),
+            serde_json::json!({"os_crypt": {
+                "encrypted_key": base64::engine::general_purpose::STANDARD.encode(wrapped)
+            }})
+            .to_string(),
+        )
+        .unwrap();
+        assert_eq!(
+            recover_electron_v10(&sealed, &profiles, unprotect_dpapi).unwrap(),
+            master
+        );
+        fs::remove_dir_all(root).unwrap();
     }
 }
