@@ -1,6 +1,6 @@
 [package]
 name = "biank-desktop"
-version = "0.3.6"
+version = "0.3.7"
 description = "Biank Desktop — Lightweight Native Shell"
 authors = ["CB Inteligencia"]
 edition = "2021"
