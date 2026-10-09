@@ -1,5 +1,5 @@
 import {spawn,execFileSync} from 'node:child_process';
-import {mkdtempSync,existsSync,readFileSync,openSync,closeSync,writeFileSync,mkdirSync,readdirSync} from 'node:fs';
+import {mkdtempSync,existsSync,readFileSync,openSync,closeSync,writeFileSync,mkdirSync,readdirSync,statfsSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join,resolve} from 'node:path';
 import assert from 'node:assert/strict';
@@ -64,6 +64,12 @@ try{
   const symptoms={stdin:/stdin/i.test(text),vault:/vault|llave|bóveda/i.test(text),catalog:/catálogo interno|base.skills|semilla/i.test(text),path:/URL|path|ruta|directorio/i.test(text)};
   console.error(JSON.stringify({nodeStartupErrorCodes:codes,errorClasses:classes,missingPackages:modules,symptoms}));
  }
+ // Synthetic upgrade roots hold no user data or secrets: surface the engine's own error lines.
+ if(upgradeMb>0&&existsSync(join(root,'logs/engine.log'))){
+  const lines=readFileSync(join(root,'logs/engine.log'),'utf8').split(/\r?\n/).filter(line=>/error|Error|ENOSPC|EPERM|EBUSY|respaldo|integridad/.test(line)).slice(-15);
+  console.error(JSON.stringify({upgradeEngineErrors:lines.map(line=>line.replace(/[A-Za-z0-9_-]{40,}/g,'<redacted>').slice(0,400))}));
+ }
+ if(upgradeMb>0)try{console.error(JSON.stringify({freeDiskBytes:statfsSync(root).bavail*statfsSync(root).bsize}));}catch{}
  if(existsSync(join(root,'runtime-phase.json'))){const phase=JSON.parse(readFileSync(join(root,'runtime-phase.json'),'utf8')).phase;if(/^[a-z][a-z0-9_-]{0,40}$/.test(phase||''))console.error(JSON.stringify({lastBootstrapPhase:phase}));}
  throw error;
 }finally{
