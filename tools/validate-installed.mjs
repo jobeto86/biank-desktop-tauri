@@ -1,7 +1,8 @@
-import {spawn,execFileSync} from 'node:child_process';
+import {spawn,execFile,execFileSync} from 'node:child_process';
+import {promisify} from 'node:util';
 import {mkdtempSync,existsSync,readFileSync,openSync,closeSync,writeFileSync,mkdirSync,readdirSync,statfsSync} from 'node:fs';
 import {tmpdir} from 'node:os';
-import {join,resolve} from 'node:path';
+import {join,resolve,dirname} from 'node:path';
 import assert from 'node:assert/strict';
 import {randomBytes} from 'node:crypto';
 const executable=resolve(process.argv[2]);
@@ -21,7 +22,8 @@ if(upgradeMb>0){
 }
 const startedAt=Date.now();
 const log=openSync(join(root,'shell.log'),'a');
-const child=spawn(executable,[],{env:{...process.env,BIANK_DATA_ROOT:root,BIANK_DESKTOP_CONFIG_ROOT:join(root,'config')},stdio:['ignore',log,log]});closeSync(log);
+const shellEnv={...process.env,BIANK_DATA_ROOT:root,BIANK_DESKTOP_CONFIG_ROOT:join(root,'config')};
+const child=spawn(executable,[],{env:shellEnv,stdio:['ignore',log,log]});closeSync(log);
 let connection;
 try{
  const deadline=Date.now()+(upgradeMb>0?660000:150000);
@@ -52,8 +54,21 @@ try{
   assert.deepEqual(readdirSync(join(root,'backups')).filter(name=>name.startsWith('.snapshot-')),[],'An unpublished backup staging remained');
   upgrade={profileMb:upgradeMb,startupSeconds:Math.round((Date.now()-startedAt)/1000),version:marker.version};
  }
- console.log(JSON.stringify({status:'PASS',installedEngine:true,nativeWindow:true,bundledCodex:true,...(upgrade?{upgrade}:{}),evidence:root}));
- writeFileSync(join(root,'result.json'),JSON.stringify({status:'PASS',installedEngine:true,nativeWindow:true,bundledCodex:true})+'\n');
+ let installerClose;
+ if(process.platform==='win32'&&!process.argv[3]){
+  // Exercise the same guard used by NSIS against a real, running installed shell.
+  await promisify(execFile)(join(process.env.SystemRoot,'System32','WindowsPowerShell','v1.0','powershell.exe'),
+   ['-NoLogo','-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',resolve('src-tauri/windows/prepare-install.ps1'),'-InstallDir',dirname(executable)],
+   {env:shellEnv,timeout:90000});
+  connection=undefined;
+  const closedDeadline=Date.now()+10000;
+  while(child.exitCode===null&&Date.now()<closedDeadline)await new Promise(r=>setTimeout(r,100));
+  assert.equal(child.exitCode,0,'Installer guard did not close the installed shell cleanly');
+  installerClose=true;
+ }
+ const result={status:'PASS',installedEngine:true,nativeWindow:true,bundledCodex:true,...(installerClose?{installerClose}:{}),...(upgrade?{upgrade}:{}),evidence:root};
+ console.log(JSON.stringify(result));
+ writeFileSync(join(root,'result.json'),JSON.stringify(result)+'\n');
 }catch(error){
  // Only the Rust shell's controlled bootstrap messages; no engine tokens/logs.
  if(existsSync(join(root,'logs/shell.log')))console.error(readFileSync(join(root,'logs/shell.log'),'utf8'));
@@ -74,7 +89,7 @@ try{
  if(existsSync(join(root,'runtime-phase.json'))){const phase=JSON.parse(readFileSync(join(root,'runtime-phase.json'),'utf8')).phase;if(/^[a-z][a-z0-9_-]{0,40}$/.test(phase||''))console.error(JSON.stringify({lastBootstrapPhase:phase}));}
  throw error;
 }finally{
- if(connection){const owner=randomBytes(32).toString('hex');
+ if(connection&&child.exitCode===null){const owner=randomBytes(32).toString('hex');
   const request=(route,body)=>fetch(connection.origin+route,{method:'POST',headers:connection.headers,body:JSON.stringify(body)});
   const state=await request('/api/desktop/drain',{enabled:true,owner}).then(r=>r.json());assert.equal(state.active,0);
   await request('/api/desktop/shutdown',{owner});
