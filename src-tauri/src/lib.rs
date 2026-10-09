@@ -188,6 +188,21 @@ async fn request_exit(app: AppHandle) -> Result<(), String> {
     app.exit(0);
     Ok(())
 }
+// Installer-driven exit must never launch a second downloaded installer.
+async fn installer_close(app: AppHandle) -> Result<(), String> {
+    let Some(state) = app.try_state::<Desktop>() else {
+        return Err("Biank está preparando sus datos. Espera a que termine.".into());
+    };
+    if state.exiting.swap(true, Ordering::SeqCst) {
+        return Err("Biank ya está cerrando.".into());
+    }
+    if let Err(error) = state.shutdown().await {
+        state.exiting.store(false, Ordering::SeqCst);
+        return Err(error);
+    }
+    app.exit(0);
+    Ok(())
+}
 fn data_root() -> Result<(PathBuf, bool), String> {
     if cfg!(debug_assertions) {
         if let Some(root) = std::env::var_os("BIANK_TAURI_TEST_ROOT") {
@@ -333,8 +348,18 @@ async fn start(app: AppHandle) -> Result<(), String> {
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
-        .plugin(tauri_plugin_single_instance::init(|app, _, _| {
-            let _ = focus_main(app.clone());
+        .plugin(tauri_plugin_single_instance::init(|app, args, _| {
+            if args.iter().any(|arg| arg == "--installer-close") {
+                let handle = app.clone();
+                tauri::async_runtime::spawn(async move {
+                    if let Err(error) = installer_close(handle.clone()).await {
+                        shell_log(&error);
+                        let _ = handle.emit("biank-shell-error", error);
+                    }
+                });
+            } else {
+                let _ = focus_main(app.clone());
+            }
         }))
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_dialog::init())
@@ -345,6 +370,11 @@ pub fn run() {
         .manage(updates::Updates::default())
         .manage(imports::Imports::default())
         .setup(|app| {
+            // With no previous shell the close request must not start a new engine.
+            if std::env::args().any(|arg| arg == "--installer-close") {
+                app.handle().exit(0);
+                return Ok(());
+            }
             shell_log("biank-shell: configurando bandeja");
             let show = MenuItem::with_id(app, "show", "Abrir Biank", true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "Salir de Biank", true, None::<&str>)?;

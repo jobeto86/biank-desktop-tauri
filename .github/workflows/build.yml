@@ -106,6 +106,12 @@ jobs:
         env:
           BIANK_TAURI_PUBLIC_KEY: ${{ vars.BIANK_TAURI_PUBLIC_KEY }}
         run: npm run configure:updater
+      - name: Check Windows installer process and file guards
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          ./tools/windows-installer-guard.test.ps1
+          ./tools/windows-installer-hook.test.ps1
       - name: Check native contracts
         run: cargo test --manifest-path src-tauri/Cargo.toml --locked
       - name: Build unsigned QA installer
