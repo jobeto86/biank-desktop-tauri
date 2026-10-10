@@ -3,20 +3,104 @@
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="color-scheme" content="dark light"><title>Biank</title>
+<link rel="preload" as="image" href="avatars/biank-sprites-3d-dark.png">
+<link rel="preload" as="image" href="avatars/biank-sprites-3d.png">
 <style>
-:root{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;color:#eeeaf7;background:#100e17;color-scheme:dark;--muted:#b5aec8;--accent:#b698ed;--edge:#30283e}
-*{box-sizing:border-box}body{margin:0;min-height:100vh;display:grid;place-items:center;padding:32px;background:radial-gradient(ellipse at 50% 36%,#251b37 0,transparent 60%)}
-main{text-align:center;width:min(100%,480px)}.mark{position:relative;display:grid;place-items:center;width:88px;height:88px;margin:0 auto 28px;border:1px solid var(--edge);border-radius:26px;background:#ffffff06;color:var(--accent);font-size:52px;font-weight:300;box-shadow:0 12px 65px #b698ed14}.mark:before{content:"";position:absolute;inset:-9px;border:1px solid var(--edge);border-top-color:var(--accent);border-radius:32px;animation:orbit 3s linear infinite}
-h1{font-size:30px;font-weight:500;letter-spacing:-.8px;margin:0 0 24px}.status{font-size:17px;line-height:1.5;min-height:52px;margin:0}.hint{font-size:14px;color:var(--muted);line-height:1.7;margin:20px auto 0;max-width:390px}.activity{height:3px;margin:22px auto 0;width:160px;overflow:hidden;border-radius:3px;background:var(--edge)}.activity:after{content:"";display:block;width:55%;height:100%;background:var(--accent);border-radius:3px;animation:activity 1.8s ease-in-out infinite}.elapsed{font-size:12px;color:var(--muted);margin-top:20px;font-variant-numeric:tabular-nums}
-[data-state=error] .mark:before,[data-state=error] .activity:after{animation:none}[data-state=error] .activity{display:none}[data-state=error] .mark{color:#f0a6a6}[data-state=error] .status{color:#f0a6a6}
-@keyframes orbit{to{transform:rotate(360deg)}}@keyframes activity{0%{transform:translateX(-110%)}100%{transform:translateX(200%)}}
-@media(prefers-color-scheme:light){:root{color:#292032;background:#faf8fd;color-scheme:light;--muted:#6c6279;--accent:#7850b4;--edge:#e2d9ed}body{background:radial-gradient(ellipse at 50% 36%,#eae0f5 0,transparent 60%)}[data-state=error] .status,[data-state=error] .mark{color:#a43232}}
-@media(prefers-reduced-motion:reduce){.mark:before,.activity:after{animation:none}.activity:after{width:100%;opacity:.5}}
+:root{
+  font-family:system-ui,-apple-system,"Segoe UI",sans-serif;
+  color:#eeeaf7;background:#100e17;color-scheme:dark;
+  --muted:#b5aec8;--accent:#b698ed;--edge:#30283e;
+  --sprite-src:url('avatars/biank-sprites-3d-dark.png');
+}
+*{box-sizing:border-box}
+body{
+  margin:0;min-height:100vh;display:grid;place-items:center;padding:32px;
+  background:radial-gradient(ellipse at 50% 36%,#251b37 0,transparent 60%);
+  user-select:none;-webkit-user-select:none;
+}
+main{text-align:center;width:min(100%,480px)}
+
+.avatar-stage{
+  position:relative;width:144px;height:144px;margin:0 auto 28px;display:grid;place-items:center;
+}
+.avatar-halo{
+  position:absolute;inset:-18px;border-radius:50%;
+  background:radial-gradient(circle,rgba(182,152,237,.28) 0%,transparent 68%);
+  animation:halo-pulse 3.6s ease-in-out infinite alternate;pointer-events:none;
+}
+.avatar-ring{
+  position:absolute;inset:-6px;border-radius:50%;border:1.5px solid transparent;
+  border-top-color:var(--accent);border-right-color:rgba(182,152,237,.35);
+  animation:orbit 3s linear infinite;
+}
+.avatar-frame{
+  position:relative;width:128px;height:128px;border-radius:50%;overflow:hidden;
+  box-shadow:0 14px 40px rgba(0,0,0,.5),0 0 0 1px var(--edge);
+  background:#161224;animation:breathe 4.5s ease-in-out infinite;
+  transform:translateZ(0);
+}
+.sprite-layer{
+  position:absolute;inset:0;border-radius:inherit;
+  background-image:var(--sprite-src);background-size:300% 200%;background-repeat:no-repeat;
+  background-position:0% 0%;transition:opacity 350ms cubic-bezier(.4,0,.2,1);
+  will-change:opacity;transform:translateZ(0);
+}
+.sprite-layer.layer-a{opacity:1}
+.sprite-layer.layer-b{opacity:0}
+
+h1{font-size:30px;font-weight:500;letter-spacing:-.8px;margin:0 0 20px}
+.status{font-size:17px;line-height:1.5;min-height:48px;margin:0}
+.hint{font-size:14px;color:var(--muted);line-height:1.7;margin:18px auto 0;max-width:390px}
+.activity{height:3px;margin:20px auto 0;width:160px;overflow:hidden;border-radius:3px;background:var(--edge)}
+.activity:after{content:"";display:block;width:55%;height:100%;background:var(--accent);border-radius:3px;animation:activity 1.8s ease-in-out infinite}
+.elapsed{font-size:12px;color:var(--muted);margin-top:18px;font-variant-numeric:tabular-nums;min-height:16px}
+
+.ready-celebrate .avatar-halo{
+  transform:scale(1.35);opacity:1;
+  background:radial-gradient(circle,rgba(182,152,237,.48) 0%,transparent 70%);
+  transition:all 450ms ease-out;
+}
+.ready-celebrate .avatar-ring{
+  border-color:var(--accent);transform:scale(1.06);transition:all 450ms ease-out;
+}
+
+[data-state=error] .avatar-ring{border-top-color:#f0a6a6;border-right-color:transparent;animation:none}
+[data-state=error] .avatar-halo{background:radial-gradient(circle,rgba(240,166,166,.25) 0%,transparent 68%);animation:none}
+[data-state=error] .activity{display:none}
+[data-state=error] .status{color:#f0a6a6}
+
+@keyframes breathe{0%,100%{transform:scale(1)}50%{transform:scale(1.02) translateY(-1px)}}
+@keyframes halo-pulse{0%{transform:scale(.94);opacity:.55}100%{transform:scale(1.14);opacity:.95}}
+@keyframes orbit{to{transform:rotate(360deg)}}
+@keyframes activity{0%{transform:translateX(-110%)}100%{transform:translateX(200%)}}
+
+@media(prefers-color-scheme:light){
+  :root{
+    color:#292032;background:#faf8fd;color-scheme:light;
+    --muted:#6c6279;--accent:#7850b4;--edge:#e2d9ed;
+    --sprite-src:url('avatars/biank-sprites-3d.png');
+  }
+  body{background:radial-gradient(ellipse at 50% 36%,#eae0f5 0,transparent 60%)}
+  .avatar-frame{background:#f0eaf8}
+  [data-state=error] .status{color:#a43232}
+}
+@media(prefers-reduced-motion:reduce){
+  .avatar-ring,.avatar-halo,.avatar-frame,.activity:after{animation:none}
+  .sprite-layer{transition:none}
+  .activity:after{width:100%;opacity:.5}
+}
 </style>
 </head>
 <body data-state="loading">
 <main aria-labelledby="title" aria-busy="true">
-<div class="mark" aria-hidden="true">B</div>
+<div class="avatar-stage" aria-hidden="true">
+  <div class="avatar-halo"></div>
+  <div class="avatar-ring"></div>
+  <div class="avatar-frame">
+    <div class="sprite-layer layer-a"></div>
+    <div class="sprite-layer layer-b"></div>
+  </div>
+</div>
 <h1 id="title">Biank</h1>
 <p id="status" class="status" role="status" aria-live="polite">Preparando Biank…</p>
 <div class="activity" aria-hidden="true"></div>
