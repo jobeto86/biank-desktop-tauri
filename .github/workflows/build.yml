@@ -96,6 +96,11 @@ jobs:
           node tools/stage-codex.mjs
           node .core/apps/desktop/desktop/build/stage-cloudflared.mjs ${{ matrix.cloud_platform }} ${{ matrix.arch }}
           npm run stage:runtime
+      - name: Validate private profiles with the packaged Codex (CUR-128)
+        working-directory: .core/apps/desktop/coordinator
+        run: |
+          node --experimental-sqlite --import tsx --test --test-timeout=60000 test/profiles-direct.test.ts
+          node --import tsx tools/check-provider-candidate.ts "${{ github.workspace }}/src-tauri/runtime"
       - name: Validate first ChatGPT authorization with bundled Codex
         working-directory: .core/apps/desktop/coordinator
         env:
