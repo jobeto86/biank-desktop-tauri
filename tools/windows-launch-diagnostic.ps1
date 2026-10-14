@@ -41,6 +41,30 @@ function Get-Cur260LaunchFailure {
 
 # Diagnostic only after the original PowerShell invocation failed. Never upgrades
 # that failure to PASS; starts the same resolved binary with --version only.
+# This is an actual file-open observation, not a computed ACL/execute verdict.
+function Get-Cur260FileReadProbe {
+    param([Parameter(Mandatory)][string]$FilePath)
+    $result = [ordered]@{ outcome = 'open_failed'; hresult = $null;
+        failure = $null; cleanup_confirmed = $false }
+    $stream = $null
+    try {
+        $stream = [System.IO.File]::Open($FilePath, [System.IO.FileMode]::Open,
+            [System.IO.FileAccess]::Read,
+            [System.IO.FileShare]::ReadWrite -bor [System.IO.FileShare]::Delete)
+        $result.outcome = 'opened_for_read'
+        # No byte content or length enters the receipt.
+    } catch {
+        $result.failure = Get-Cur260LaunchFailure -Record $_
+        $result.hresult = $result.failure.hresult
+    } finally {
+        try {
+            if ($null -ne $stream) { $stream.Dispose() }
+            $result.cleanup_confirmed = $true
+        } catch { $result.cleanup_confirmed = $false }
+    }
+    return $result
+}
+
 function Get-Cur260DirectLaunchProbe {
     param([Parameter(Mandatory)][string]$FilePath)
     $result = [ordered]@{ outcome = 'start_failed'; exit_code = $null;

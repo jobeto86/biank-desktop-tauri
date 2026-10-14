@@ -104,6 +104,26 @@ if ($probe.outcome -ne 'exited' -or $probe.exit_code -ne 0 -or
     throw 'Direct launch success, cleanup or minimal projection failed'
 }
 Write-Output 'PASS: direct Process.Start success/failure fixtures; Windows restricted-token probe NOT_RUN.'
+$probe = Get-Cur260FileReadProbe -FilePath $missing
+if ($probe.outcome -ne 'open_failed' -or !$probe.cleanup_confirmed -or
+    $null -eq $probe.hresult -or ($probe | ConvertTo-Json -Depth 6 -Compress).Contains($marker)) {
+    throw 'Read-open failure fabricated success or exposed private path'
+}
+$readFixture = Join-Path ([System.IO.Path]::GetTempPath()) ($marker + [guid]::NewGuid().ToString('N'))
+try {
+    [System.IO.File]::WriteAllText($readFixture, $marker)
+    $probe = Get-Cur260FileReadProbe -FilePath $readFixture
+    if ($probe.outcome -ne 'opened_for_read' -or !$probe.cleanup_confirmed -or
+        $null -ne $probe.hresult -or $null -ne $probe.failure -or $probe.Count -ne 4 -or
+        ($probe | ConvertTo-Json -Depth 6 -Compress).Contains($marker)) {
+        throw 'Read-open success or minimal sanitization failed'
+    }
+    # Exclusive access after return proves that the probe released its stream.
+    $exclusive = [System.IO.File]::Open($readFixture, [System.IO.FileMode]::Open,
+        [System.IO.FileAccess]::Read, [System.IO.FileShare]::None)
+    $exclusive.Dispose()
+} finally { Remove-Item -LiteralPath $readFixture -Force }
+Write-Output 'PASS: file-open observation, release and sanitized failure; Windows access NOT_RUN.'
 if ($IsLinux) {
     $fixture = Join-Path ([System.IO.Path]::GetTempPath()) ('cur260-probe-' + [guid]::NewGuid().ToString('N'))
     try {
