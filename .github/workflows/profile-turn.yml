@@ -1,0 +1,61 @@
+name: Private profile native turn (CUR-128)
+on:
+  workflow_dispatch:
+    inputs:
+      core_sha:
+        description: Immutable reviewed private core SHA
+        required: true
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: profile-turn-${{ github.ref }}-${{ inputs.core_sha }}
+  cancel-in-progress: false
+jobs:
+  turn:
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [windows-2022, macos-14]
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Require immutable core
+        shell: bash
+        env:
+          CORE_SHA: ${{ inputs.core_sha }}
+        run: '[[ "$CORE_SHA" =~ ^[0-9a-f]{40}$ ]]'
+      - uses: actions/checkout@v4
+        with:
+          repository: jobeto86/biank
+          ref: ${{ inputs.core_sha }}
+          ssh-key: ${{ secrets.BIANK_CORE_READ_SSH_KEY }}
+          persist-credentials: false
+          path: .core
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install pinned coordinator dependencies
+        working-directory: .core/apps/desktop/coordinator
+        run: npm ci --no-fund
+      - name: Install pinned official native engine
+        working-directory: .core/apps/desktop/desktop/vendor
+        run: npm ci --no-fund --ignore-scripts
+      - name: Stage installer engine unchanged
+        env:
+          BIANK_CORE_DESKTOP: ${{ github.workspace }}/.core/apps/desktop
+        run: node tools/stage-codex.mjs
+      - name: Complete native turn and verify private history
+        working-directory: .core/apps/desktop/coordinator
+        env:
+          BIANK_CODEX_EXECUTABLE: ${{ github.workspace }}/.core/apps/desktop/dist/codex/${{ runner.os == 'Windows' && 'codex.exe' || 'codex' }}
+          BIANK_PROFILE_TURN_EVIDENCE: ${{ runner.temp }}/profile-turn.json
+        run: node --experimental-sqlite --import tsx --test --test-timeout=120000 test/profile-turn-native.integration.ts
+      - name: Retain sanitized receipt
+        uses: actions/upload-artifact@v4
+        with:
+          name: profile-turn-${{ runner.os }}
+          path: ${{ runner.temp }}/profile-turn.json
+          if-no-files-found: error
+          retention-days: 7
