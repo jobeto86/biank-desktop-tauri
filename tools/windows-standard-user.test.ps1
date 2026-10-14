@@ -165,6 +165,12 @@ if ($Child) {
         if ($receipt.stage -eq 'dependency-node-execution') {
             $receipt.node_failure = Get-Cur260LaunchFailure -Record $_
             $receipt.direct_launch_probe = Get-Cur260DirectLaunchProbe -FilePath $node
+            $receipt.node_read_probe = Get-Cur260FileReadProbe -FilePath $node
+            # The executable of this running restricted child, not a PATH lookup.
+            # --version only, same launcher options, no elevation or token change.
+            $control = [System.Environment]::ProcessPath
+            $receipt.control_read_probe = Get-Cur260FileReadProbe -FilePath $control
+            $receipt.control_launch_probe = Get-Cur260DirectLaunchProbe -FilePath $control
         }
         # Deliberately retain fixed stage only: never exception text, paths, SIDs or stdout.
         $receipt.failure_bucket = $receipt.stage
