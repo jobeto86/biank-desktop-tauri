@@ -1,6 +1,7 @@
 param([switch]$Child, [switch]$ValidateOnly, [string]$FixtureRoot,
     [string]$ReceiptPath, [string]$SourceRevision)
 $ErrorActionPreference = 'Stop'
+. (Join-Path $PSScriptRoot 'windows-launch-diagnostic.ps1')
 # CUR-260: restricted own token, not a new Windows account. No actual upgrade claim.
 $nativeSource = @'
 using System;
@@ -141,8 +142,11 @@ if ($Child) {
         }
         $receipt.harnesses_available = $true
         $receipt.stage = 'dependency-node-resolution'
-        $node = (Get-Command node -ErrorAction Stop).Source
+        $nodeCommand = Get-Command node -ErrorAction Stop
+        $node = $nodeCommand.Source
         $receipt.node_resolved = $true
+        $receipt.node_command_is_application = $nodeCommand.CommandType -eq 'Application'
+        $receipt.node_path_is_file = [bool]($node -and (Test-Path -LiteralPath $node -PathType Leaf))
         $receipt.stage = 'dependency-node-execution'
         $nodeVersion = & $node --version 2>$null
         $receipt.node_exit_code = $LASTEXITCODE
@@ -158,6 +162,9 @@ if ($Child) {
         $receipt.nsis_hook = $true
         $receipt.native_assertions = 'PASS'; $receipt.verdict='PASS_RESTRICTED_TOKEN_GUARDS'; $receipt.stage='complete'
     } catch {
+        if ($receipt.stage -eq 'dependency-node-execution') {
+            $receipt.node_failure = Get-Cur260LaunchFailure -Record $_
+        }
         # Deliberately retain fixed stage only: never exception text, paths, SIDs or stdout.
         $receipt.failure_bucket = $receipt.stage
     } finally {
