@@ -1,0 +1,27 @@
+# CUR-260 — Windows update with a non-administrative token (DEV)
+
+## Observed scope and diagnosis
+
+The reported contrast is an unsuccessful 0.3.8 → 0.3.9 update for a normal user and a successful update for an administrator. It is an observation, not a reproduced root cause. The historical engine HTTP 409 is not yet tied to this updater failure or to the `profile_changing` response fixed in private core 9d1370f.
+
+Reviewed public base: 0fe3274c2371a1d01da50ac1baa2ea898f62e5c3. NSIS configuration is `currentUser`; the signed-update configuration uses quiet mode. The locked Tauri updater 2.13.2 invokes the installer with the Windows `open` verb, not `runas`, and exits its own process after successful launch. That launch success does not prove completion of installation: a later NSIS guard refusal is not collected by the caller. Do not change privilege requirements or weaken the process/file guard based on this observation.
+
+The existing Windows gate installs and opens a candidate in its runner context. It also starts a candidate with a synthetic older-profile marker; this is a data-migration startup check, not a binary upgrade from an installed 0.3.8. It does not assert absence of administrative privileges. Existing healthy gates therefore cannot settle this report.
+
+## Narrow native experiment
+
+Run the existing real process/file preparation and compiled NSIS hook tests with a restricted token derived from the runner. The child must prove effective Administrators membership is false, debug privileges are unavailable, and its own fixture remains writable. Do not create Windows accounts, passwords, customer data, or machine policies. Preserve the existing live-process and locked-DLL refusal assertions, unrelated-process preservation, clean-install acceptance and fixture cleanup. A missing assertion or receipt fails the gate; no skip is a PASS.
+
+A restricted token preserves the runner SID and home environment. It tests a non-administrative execution context, not a newly provisioned user's profile, ACLs or a specific installation. Passing this experiment does not certify the actual 0.3.8 → 0.3.9 updater, installed application UI or customer recovery. Native execution is pending; Linux static inspection is not Windows evidence.
+
+## Acceptance still required
+
+After the narrow experiment, reproduce the signed binary update from 0.3.8 to 0.3.9 in a writable per-user destination, with a synthetic sentinel and final executable version checked. Exercise success, busy-runtime refusal and locked-file refusal, collect the installer exit code, and require no data replacement on refusal. Preserve backup and drain contracts. Identify the actual failing phase before implementing a product fix. Record any inability to reproduce rather than attributing the incident to authentication or ERP roles.
+
+No installer/release is published and no production installation is modified by this DEV work.
+
+## Prepared evidence, 2026-10-13
+
+Harness/workflow implementation: `ee836da`; `tools/windows-standard-user.test.ps1` and `.github/workflows/windows-standard-user.yml`. PowerShell 7.6.7 ARM64 downloaded from the official PowerShell release with its published asset SHA256 verified. PowerShell syntax and embedded C# compilation passed; workflow YAML parsed. A countertest invoking native mode on Linux failed as required and created no native receipt. Receipt of static checks: `~/.marvin/scratch/cur260/static-validation.json`. These are static checks, not native Windows assertions.
+
+Independent documentation review by Hooke: PASS with explicit Windows NOT_RUN. Independent harness review and hosted execution remain separate gates. The new workflow is manual-only and publishes a sanitized receipt with five-day retention, not an installer.
