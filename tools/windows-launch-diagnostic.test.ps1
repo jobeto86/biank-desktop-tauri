@@ -88,3 +88,38 @@ if ($result.exception_kind -ne 'RuntimeException' -or $result.native_command_fai
     throw 'Runtime ErrorRecord classification or sanitization failed'
 }
 Write-Output 'PASS: bounded nested records and cycles; private text excluded. Windows execution NOT_RUN.'
+
+$missing = Join-Path ([System.IO.Path]::GetTempPath()) ($marker + [guid]::NewGuid().ToString('N'))
+$probe = Get-Cur260DirectLaunchProbe -FilePath $missing
+if ($probe.outcome -ne 'start_failed' -or !$probe.cleanup_confirmed -or
+    $null -eq $probe.win32_code -or $probe.Count -ne 5 -or
+    ($probe | ConvertTo-Json -Compress).Contains($marker)) {
+    throw 'Direct launch failure lost native cause, cleanup or sanitization'
+}
+$self = (Get-Process -Id $PID).Path
+$probe = Get-Cur260DirectLaunchProbe -FilePath $self
+if ($probe.outcome -ne 'exited' -or $probe.exit_code -ne 0 -or
+    $probe.node22_version -or !$probe.cleanup_confirmed -or
+    $null -ne $probe.win32_code -or ($probe | ConvertTo-Json -Compress).Contains($self)) {
+    throw 'Direct launch success, cleanup or minimal projection failed'
+}
+Write-Output 'PASS: direct Process.Start success/failure fixtures; Windows restricted-token probe NOT_RUN.'
+if ($IsLinux) {
+    $fixture = Join-Path ([System.IO.Path]::GetTempPath()) ('cur260-probe-' + [guid]::NewGuid().ToString('N'))
+    try {
+        $null = New-Item -ItemType Directory -Path $fixture
+        $slow = Join-Path $fixture 'slow-version'
+        [System.IO.File]::WriteAllText($slow, "#!/bin/sh`nexec sleep 30`n")
+        [System.IO.File]::SetUnixFileMode($slow,
+            [System.IO.UnixFileMode]::UserRead -bor [System.IO.UnixFileMode]::UserWrite -bor [System.IO.UnixFileMode]::UserExecute)
+        $clock = [System.Diagnostics.Stopwatch]::StartNew()
+        $probe = Get-Cur260DirectLaunchProbe -FilePath $slow
+        $clock.Stop()
+        if ($probe.outcome -ne 'timeout' -or !$probe.cleanup_confirmed -or
+            $null -ne $probe.exit_code -or $probe.node22_version -or
+            $clock.Elapsed.TotalSeconds -gt 9 -or ($probe | ConvertTo-Json -Compress).Contains($fixture)) {
+            throw 'Direct launch timeout did not bound and clean its owned child'
+        }
+    } finally { Remove-Item -LiteralPath $fixture -Recurse -Force }
+    Write-Output 'PASS: Linux owned slow-process timeout and cleanup; Windows timeout NOT_RUN.'
+}
