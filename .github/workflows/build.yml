@@ -103,6 +103,19 @@ jobs:
         run: |
           node --experimental-sqlite --import tsx --test --test-timeout=60000 test/profiles-direct.test.ts
           node --import tsx tools/check-provider-candidate.ts "${{ github.workspace }}/src-tauri/runtime"
+      - name: Verify native turn persists only in the private Biank profile
+        working-directory: .core/apps/desktop/coordinator
+        env:
+          BIANK_CODEX_EXECUTABLE: ${{ github.workspace }}/src-tauri/runtime/codex/${{ runner.os == 'Windows' && 'codex.exe' || 'codex' }}
+          BIANK_PROFILE_TURN_EVIDENCE: ${{ runner.temp }}/profile-turn.json
+        run: node --experimental-sqlite --import tsx --test --test-timeout=120000 test/profile-turn-native.integration.ts
+      - name: Retain private profile validation receipt
+        uses: actions/upload-artifact@v4
+        with:
+          name: profile-turn-${{ runner.os }}
+          path: ${{ runner.temp }}/profile-turn.json
+          if-no-files-found: error
+          retention-days: 7
       - name: Validate first ChatGPT authorization with bundled Codex
         working-directory: .core/apps/desktop/coordinator
         env:
@@ -156,12 +169,12 @@ jobs:
           if ($installed.ExitCode -ne 0) { throw "NSIS installation failed: $($installed.ExitCode)" }
           node tools/validate-installed.mjs "$destination/biank-desktop.exe"
           if ($LASTEXITCODE -ne 0) { throw 'Installed Windows validation failed' }
-      - name: Upgrade from 0.3.5 with a large profile on the installed Windows candidate
+      - name: Upgrade from 0.3.9 with a large profile on the installed Windows candidate
         if: runner.os == 'Windows'
         shell: pwsh
         env:
           BIANK_QA_UPGRADE_PROFILE_MB: '3072'
-          BIANK_QA_UPGRADE_FROM: '0.3.5'
+          BIANK_QA_UPGRADE_FROM: '0.3.9'
         run: |
           $destination = Join-Path $env:RUNNER_TEMP 'Biank-Installed-QA'
           node tools/validate-installed.mjs "$destination/biank-desktop.exe"
