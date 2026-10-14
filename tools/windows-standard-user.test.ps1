@@ -132,13 +132,23 @@ if ($Child) {
         [IO.File]::WriteAllText($probe,'CUR260 synthetic fixture')
         if ([IO.File]::ReadAllText($probe) -cne 'CUR260 synthetic fixture') { throw 'Fixture write failed' }
         $receipt.fixture_write = $true
-        $receipt.stage = 'dependencies'
+        $receipt.stage = 'dependency-nsis'
         if (!(Test-Path 'C:/Program Files (x86)/NSIS/makensis.exe')) { throw 'NSIS must be prepared by parent' }
+        $receipt.nsis_available = $true
         foreach ($name in 'windows-installer-guard.test.ps1','windows-installer-hook.test.ps1') {
+            $receipt.stage = if ($name -eq 'windows-installer-guard.test.ps1') { 'dependency-process-harness' } else { 'dependency-nsis-harness' }
             if (!(Test-Path (Join-Path $PSScriptRoot $name))) { throw 'Missing existing harness' }
         }
+        $receipt.harnesses_available = $true
+        $receipt.stage = 'dependency-node-resolution'
         $node = (Get-Command node -ErrorAction Stop).Source
-        if ((& $node --version) -notmatch '^v22\.') { throw 'Node22 required' }
+        $receipt.node_resolved = $true
+        $receipt.stage = 'dependency-node-execution'
+        $nodeVersion = & $node --version 2>$null
+        $receipt.node_exit_code = $LASTEXITCODE
+        $receipt.stage = 'dependency-node-version'
+        if ($LASTEXITCODE -ne 0 -or $nodeVersion -notmatch '^v22\.') { throw 'Node22 required' }
+        $receipt.node22_verified = $true
         Set-Location $repo
         $receipt.stage = 'existing-process-file-guard'
         & (Join-Path $PSScriptRoot 'windows-installer-guard.test.ps1') -NodeExecutable $node *> $null
