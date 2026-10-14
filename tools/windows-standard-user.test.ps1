@@ -164,6 +164,7 @@ if ($Child) {
     } catch {
         if ($receipt.stage -eq 'dependency-node-execution') {
             $receipt.node_failure = Get-Cur260LaunchFailure -Record $_
+            $receipt.direct_launch_probe = Get-Cur260DirectLaunchProbe -FilePath $node
         }
         # Deliberately retain fixed stage only: never exception text, paths, SIDs or stdout.
         $receipt.failure_bucket = $receipt.stage
