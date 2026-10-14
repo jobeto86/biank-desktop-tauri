@@ -1,0 +1,70 @@
+name: Coordinator native quality (CUR-160)
+on:
+  workflow_dispatch:
+    inputs:
+      core_sha:
+        description: Immutable private core SHA for DEV QA
+        required: true
+        type: string
+      platform:
+        description: Native QA platform
+        type: choice
+        options: [windows, macos, both]
+        default: windows
+permissions:
+  contents: read
+concurrency:
+  group: coordinator-qa-${{ github.ref }}-${{ inputs.core_sha }}-${{ inputs.platform }}
+  cancel-in-progress: false
+jobs:
+  suite:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ${{ fromJSON(inputs.platform == 'windows' && '["windows-2022"]' || inputs.platform == 'macos' && '["macos-15"]' || '["windows-2022","macos-15"]') }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+      - name: Require immutable core reference
+        shell: bash
+        env:
+          CORE_SHA: ${{ inputs.core_sha }}
+        run: '[[ "$CORE_SHA" =~ ^[0-9a-f]{40}$ ]]'
+      - uses: actions/checkout@v4
+        with:
+          repository: jobeto86/biank
+          ref: ${{ inputs.core_sha }}
+          ssh-key: ${{ secrets.BIANK_CORE_READ_SSH_KEY }}
+          persist-credentials: false
+          path: .core
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install coordinator dependencies and browser runtimes
+        working-directory: .core/apps/desktop/coordinator
+        run: |
+          npm ci --no-fund
+          npx playwright install chromium
+          node -e "const {createRequire}=require('node:module'); const {dirname,join}=require('node:path'); const pw=createRequire(require.resolve('@playwright/mcp/package.json')); require('node:child_process').execFileSync(process.execPath,[join(dirname(pw.resolve('playwright/package.json')),'cli.js'),'install','chromium'],{stdio:'inherit'});"
+          node tools/stage-candidate-browser.mjs
+      - name: Install desktop harness dependencies
+        working-directory: .core/apps/desktop/desktop
+        run: npm ci --no-fund
+      - name: Install pinned Codex distribution
+        working-directory: .core/apps/desktop/desktop/vendor
+        run: npm ci --ignore-scripts --no-fund
+      - name: Build coordinator and web contracts
+        working-directory: .core/apps/desktop/coordinator
+        run: |
+          npm run build
+          npm run bundle
+      - name: Build web interface
+        working-directory: .core/apps/desktop/web
+        run: npm ci --no-fund && npm run build
+      - name: Full coordinator suite must pass
+        working-directory: .core/apps/desktop/coordinator
+        run: npm test
