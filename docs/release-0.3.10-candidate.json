@@ -1,0 +1,144 @@
+{
+  "version": "0.3.10",
+  "verdict": "PASS_RUNTIME_AND_INSTALLER_QA_WITH_OS_TRUST_LIMIT",
+  "run": "https://github.com/jobeto86/biank-desktop-tauri/actions/runs/38507595076",
+  "coreSha": "c2d99e0d04bcd0f90d319b0cf3d93ab38a35f986",
+  "shellSha": "ed5f95daa8a2f6617d75a1c1b1fe363ac72e290c",
+  "publication": "pending explicit release authorization",
+  "platforms": {
+    "macos": {
+      "nativeJob": "https://github.com/jobeto86/biank-desktop-tauri/actions/runs/38507595076/job/115668554419",
+      "conclusion": "success",
+      "requiredSteps": [
+        "Validate real shared Chromium on the target OS",
+        "Validate private profiles with the packaged Codex (CUR-128)",
+        "Verify native turn persists only in the private Biank profile",
+        "Validate first ChatGPT authorization with bundled Codex",
+        "Check native contracts",
+        "Validate native startup before packaging",
+        "Build updater-signed artifacts",
+        "Retain candidate for review",
+        "Verify macOS ad hoc signature before installation",
+        "Mount and run actual macOS DMG candidate"
+      ],
+      "profileTurn": {
+        "suite": "CUR128_NATIVE_TURN",
+        "passed": true,
+        "host_platform": "darwin",
+        "launcher_platform": "darwin",
+        "launcher": "native-direct",
+        "executable_sha256": "74c6a6d263f40d65f99c27a815275f5b4ed0bcc2baecc396b4cf3255498bdfc0",
+        "inference": "deterministic-loopback-no-credentials",
+        "limitations": [
+          "Synthetic inference; no ChatGPT or customer entitlement verification.",
+          "Profile/process integration, not installed-app UI or customer history recovery."
+        ],
+        "exit_code": 0,
+        "stderr_bytes": 39,
+        "model_requests": 1,
+        "authorization_seen": false,
+        "completed_turns": 1,
+        "rollout_count": 1,
+        "rollout_matches_native_thread": true,
+        "profile_matches_account_user": true,
+        "personal_profile_byte_unchanged": true,
+        "owned_process_and_fixture_cleanup": true
+      },
+      "installedReceipts": [
+        {
+          "status": "PASS",
+          "installedEngine": true,
+          "nativeWindow": true,
+          "bundledCodex": true
+        },
+        {
+          "status": "PASS",
+          "installedEngine": true,
+          "nativeWindow": true,
+          "bundledCodex": true
+        }
+      ],
+      "updaterSignatureAndVersion": "PASS",
+      "gatekeeper": {
+        "status": "rejected",
+        "exitCode": 3,
+        "quarantine": true,
+        "developerIdNotarization": false
+      }
+    },
+    "windows": {
+      "nativeJob": "https://github.com/jobeto86/biank-desktop-tauri/actions/runs/38507595076/job/115668554692",
+      "conclusion": "success",
+      "requiredSteps": [
+        "Validate real shared Chromium on the target OS",
+        "Validate private profiles with the packaged Codex (CUR-128)",
+        "Verify native turn persists only in the private Biank profile",
+        "Validate first ChatGPT authorization with bundled Codex",
+        "Check native contracts",
+        "Validate native startup before packaging",
+        "Build updater-signed artifacts",
+        "Retain candidate for review",
+        "Install and run actual Windows NSIS candidate",
+        "Upgrade from 0.3.9 with a large profile on the installed Windows candidate"
+      ],
+      "profileTurn": {
+        "suite": "CUR128_NATIVE_TURN",
+        "passed": true,
+        "host_platform": "win32",
+        "launcher_platform": "win32",
+        "launcher": "native-direct",
+        "executable_sha256": "dd13bdb162a184fa04039488b234a8258ef9b76f84e926c505d5742b19249a6a",
+        "inference": "deterministic-loopback-no-credentials",
+        "limitations": [
+          "Synthetic inference; no ChatGPT or customer entitlement verification.",
+          "Profile/process integration, not installed-app UI or customer history recovery."
+        ],
+        "exit_code": 0,
+        "stderr_bytes": 39,
+        "model_requests": 1,
+        "authorization_seen": false,
+        "completed_turns": 1,
+        "rollout_count": 1,
+        "rollout_matches_native_thread": true,
+        "profile_matches_account_user": true,
+        "personal_profile_byte_unchanged": true,
+        "owned_process_and_fixture_cleanup": true
+      },
+      "installedReceipts": [
+        {
+          "status": "PASS",
+          "installedEngine": true,
+          "nativeWindow": true,
+          "bundledCodex": true
+        },
+        {
+          "status": "PASS",
+          "installedEngine": true,
+          "nativeWindow": true,
+          "bundledCodex": true,
+          "installerClose": true
+        },
+        {
+          "status": "PASS",
+          "installedEngine": true,
+          "nativeWindow": true,
+          "bundledCodex": true,
+          "installerClose": true,
+          "upgrade": {
+            "profileMb": 3072,
+            "startupSeconds": 64,
+            "version": "0.3.10"
+          }
+        }
+      ],
+      "updaterSignatureAndVersion": "PASS"
+    }
+  },
+  "checksums": "SHA256SUMS.txt",
+  "scope": [
+    "Deterministic loopback inference with official native Codex; no live ChatGPT account or entitlement claim.",
+    "Windows upgrade fixture has a synthetic 3 GB profile marked 0.3.9; no prior NSIS installer is installed by this check.",
+    "macOS ad hoc signature is valid but quarantined Gatekeeper assessment is rejected; no Developer ID notarization.",
+    "Windows candidate updater signature verified; Authenticode trust not certified."
+  ]
+}
