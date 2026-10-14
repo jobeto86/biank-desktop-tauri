@@ -1,0 +1,40 @@
+name: Windows restricted standard-user guards (CUR-260)
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  restricted-token:
+    runs-on: windows-latest
+    timeout-minutes: 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Prepare NSIS outside restricted child
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          if (!(Test-Path 'C:/Program Files (x86)/NSIS/makensis.exe')) {
+            choco install nsis -y --no-progress
+            if ($LASTEXITCODE -ne 0) { throw 'NSIS dependency preparation failed' }
+          }
+          if (!(Test-Path 'C:/Program Files (x86)/NSIS/makensis.exe')) { throw 'Missing NSIS' }
+      - name: Run existing guards under proven restricted own token
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $test = './tools/windows-standard-user.test.ps1'
+          if (!(Test-Path $test)) { throw 'Missing CUR260 harness' }
+          & $test -SourceRevision $env:GITHUB_SHA -ReceiptPath "$env:RUNNER_TEMP/cur260-standard-user.json"
+      - name: Retain sanitized receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cur260-standard-user-${{ github.sha }}
+          path: ${{ runner.temp }}/cur260-standard-user.json
+          if-no-files-found: error
+          retention-days: 5
