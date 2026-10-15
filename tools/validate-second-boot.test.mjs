@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';import {EventEmitter} from 'node:events';
-import {readFileSync,writeFileSync,readdirSync,rmSync} from 'node:fs';import {join} from 'node:path';
+import {readFileSync,writeFileSync,readdirSync,rmSync,realpathSync} from 'node:fs';import {join,dirname} from 'node:path';import {tmpdir} from 'node:os';
 import {rootDigest,SmokeError} from './installed-smoke-protocol.mjs';
 import {validateSecondBoot,isolatedEnvironment} from './validate-second-boot.mjs';
 const sha='c'.repeat(40);
@@ -30,6 +30,7 @@ test('controller waits for clean shutdown and uses the same root with new proces
  const h=harness(t),receipt=await validateSecondBoot('/candidate',sha,h.ports);
  assert.equal(receipt.status,'PASS');assert.equal(h.calls.length,2);assert.equal(h.kills.length,0);
  assert.equal(h.calls[0].root,h.calls[1].root);assert.notEqual(h.calls[0].nonce,h.calls[1].nonce);
+  assert.equal(dirname(h.calls[0].root),realpathSync.native(tmpdir()),'root uses the OS canonical spelling, including expanded Windows 8.3 aliases');
  assert.equal(receipt.boots.length,2);assert.notEqual(receipt.boots[0].enginePid,receipt.boots[1].enginePid);
  assert.equal(JSON.stringify(receipt).includes(h.calls[0].root),false,'receipt must not retain the synthetic profile path');
 });
@@ -47,6 +48,12 @@ test('launch environment preserves native OS paths and drops unrelated variable 
  for(const name of excluded)assert.equal(Object.hasOwn(env,name),false);
  assert.equal(env.BIANK_DESKTOP_DEV,'0');assert.equal(env.BIANK_STANDALONE,'1');
  assert.equal(env.BIANK_ACCESS_ENV_FILE,join('/tmp/synthetic','config','access.env'));
+});
+test('isolated Node and Rust processes receive the same native temp parent despite aliases or conflicting TEMP/TMP',()=>{
+ const root=join(realpathSync.native(tmpdir()),'biank-installed-smoke-'+'a'.repeat(32));
+ const env=isolatedEnvironment({Temp:'short-alias',tMp:'other-directory',TMPDIR:'third-directory'},root,join(root,'qa','context.json'));
+ for(const key of ['TEMP','TMP','TMPDIR'])assert.equal(env[key],dirname(root));
+ assert.deepEqual(Object.keys(env).filter(key=>['temp','tmp','tmpdir'].includes(key.toLowerCase())).sort(),['TEMP','TMP','TMPDIR']);
 });
 test('a mutable or absent candidate identifier cannot start a process',async()=>{
  for(const value of [undefined,'main','abc','C'.repeat(40)])await assert.rejects(validateSecondBoot('/candidate',value,{spawn:()=>assert.fail('must not launch')}),error=>error.code==='CANDIDATE_SHA');
