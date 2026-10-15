@@ -1,5 +1,5 @@
 import test from 'node:test';import assert from 'node:assert/strict';import {EventEmitter} from 'node:events';
-import {readFileSync,writeFileSync,readdirSync,rmSync} from 'node:fs';import {join} from 'node:path';
+import {readFileSync,writeFileSync,readdirSync,rmSync,realpathSync} from 'node:fs';import {join,dirname} from 'node:path';import {tmpdir} from 'node:os';
 import {rootDigest,SmokeError} from './installed-smoke-protocol.mjs';
 import {validateSecondBoot,isolatedEnvironment} from './validate-second-boot.mjs';
 const sha='c'.repeat(40);
@@ -30,6 +30,7 @@ test('controller waits for clean shutdown and uses the same root with new proces
  const h=harness(t),receipt=await validateSecondBoot('/candidate',sha,h.ports);
  assert.equal(receipt.status,'PASS');assert.equal(h.calls.length,2);assert.equal(h.kills.length,0);
  assert.equal(h.calls[0].root,h.calls[1].root);assert.notEqual(h.calls[0].nonce,h.calls[1].nonce);
+  assert.equal(dirname(h.calls[0].root),realpathSync.native(tmpdir()),'root uses the OS canonical spelling, including expanded Windows 8.3 aliases');
  assert.equal(receipt.boots.length,2);assert.notEqual(receipt.boots[0].enginePid,receipt.boots[1].enginePid);
  assert.equal(JSON.stringify(receipt).includes(h.calls[0].root),false,'receipt must not retain the synthetic profile path');
 });

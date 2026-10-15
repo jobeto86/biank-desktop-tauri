@@ -6,7 +6,7 @@ import {SmokeError,verifyVault,verifyUi,verifyShutdown} from './installed-smoke-
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
 const fail=code=>{throw new SmokeError(code);};
 function readReceipt(path){
-  const stat=lstatSync(path);if(!stat.isFile()||stat.isSymbolicLink()||stat.nlink!==1||stat.size>4096||realpathSync(path)!==path)fail('RECEIPT_FILE');
+  const stat=lstatSync(path);if(!stat.isFile()||stat.isSymbolicLink()||stat.nlink!==1||stat.size>4096||realpathSync.native(path)!==path)fail('RECEIPT_FILE');
   return readFileSync(path,'utf8');
 }
 export function isolatedEnvironment(original,root,context){
@@ -30,7 +30,9 @@ export async function validateSecondBoot(executable,candidateSha,ports={}){
   if(!/^[a-f0-9]{40}$/.test(candidateSha??''))fail('CANDIDATE_SHA');
   const launch=ports.spawn??spawn,delay=ports.sleep??sleep,now=ports.now??Date.now;
   const duration=ports.timeoutMs??150000;
-  const runId=randomBytes(16).toString('hex'),parent=realpathSync(tmpdir()),root=join(parent,'biank-installed-smoke-'+runId);
+  // Native realpath expands Windows 8.3 aliases as Rust canonicalize does.
+  // The JS realpath implementation only resolves symlinks and retains RUNNER~1.
+  const runId=randomBytes(16).toString('hex'),parent=realpathSync.native(tmpdir()),root=join(parent,'biank-installed-smoke-'+runId);
   mkdirSync(root,{mode:0o700});mkdirSync(join(root,'qa'),{mode:0o700});
   const contextPath=join(root,'qa','context.json'),initialNonce=randomBytes(32).toString('hex');
   const initial={schemaVersion:1,purpose:'cur160-installed-smoke',root,runId,initialNonce,candidateSha};
