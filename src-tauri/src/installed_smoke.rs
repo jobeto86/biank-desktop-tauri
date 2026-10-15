@@ -529,7 +529,7 @@ impl Validated {
     }
     pub fn read_vault(&self, boot: u8) -> Result<VaultReceipt> {
         let (value, _): (VaultReceipt, _) =
-            read_json(&self.root().join(format!("qa/vault-boot-{boot}.json")))?;
+            read_json(&self.root().join("qa").join(format!("vault-boot-{boot}.json")))?;
         if value.schema_version != 1
             || value.kind != "vault"
             || value.run_id != self.context.run_id
@@ -560,7 +560,7 @@ impl Validated {
         self.revalidate()?;
         let path = self
             .root()
-            .join(format!("qa/{kind}-boot-{}.json", self.context.boot));
+            .join("qa").join(format!("{kind}-boot-{}.json", self.context.boot));
         let mut file = fs::OpenOptions::new()
             .create_new(true)
             .write(true)
@@ -642,7 +642,7 @@ mod tests {
             .map(|v| v.unwrap())
         }
         fn vault(&self, boot: u8, instance: &str, pid: u32) {
-            fs::write(self.root.join(format!("qa/vault-boot-{boot}.json")),json!({"schemaVersion":1,"kind":"vault",
+            fs::write(self.root.join("qa").join(format!("vault-boot-{boot}.json")),json!({"schemaVersion":1,"kind":"vault",
                 "runId":self.context.run_id,"nonce":if boot==1 {"a".repeat(64)} else {self.context.nonce.clone()},"boot":boot,
                 "candidateSha":self.context.candidate_sha,"rootSha256":digest(self.context.root.as_bytes()),"engineInstanceId":instance,
                 "enginePid":pid,"operation":if boot==1 {"put"}else{"resolve"},"digestSha256":"c".repeat(64)}).to_string()).unwrap();
@@ -677,6 +677,9 @@ mod tests {
             assert_eq!(actual, expected.as_os_str());
             assert_eq!(canonical(Path::new(actual)).unwrap().as_os_str(), actual);
         }
+        f.vault(1, "engine-instance-0001", 123);
+        assert_eq!(v.read_vault(1).unwrap().engine_pid, 123);
+        assert!(canonical(&f.root.join("qa").join("vault-boot-1.json")).is_ok());
         #[cfg(windows)]
         {
             // A mixed-separator alias still fails; the guard is not relaxed.
