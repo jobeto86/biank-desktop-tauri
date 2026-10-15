@@ -90,6 +90,9 @@ jobs:
             const index = args.findIndex((arg) => arg.startsWith("--test-concurrency="));
             if (index < 0) throw new Error("The coordinator test script must declare --test-concurrency");
             args[index] = "--test-concurrency=2";
+            const timeoutIndex = args.findIndex((arg) => arg.startsWith("--test-timeout="));
+            if (timeoutIndex < 0) throw new Error("The coordinator test script must declare --test-timeout");
+            args[timeoutIndex] = "--test-timeout=120000";
             const result = spawnSync(process.execPath, args, { stdio: "inherit" });
             if (result.error) throw result.error;
             process.exitCode = result.status ?? 1;
