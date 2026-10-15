@@ -4,12 +4,35 @@ use std::{
     fs,
     io::Read,
     path::{Component, Path},
+    thread,
+    time::Duration,
 };
 /// The manifest is bound to the compiled shell, not trusted from mutable disk.
+/// Retries briefly so a transient Windows updater file flush/handle release does not fail the first launch.
 pub fn verify(runtime: &Path) -> Result<(), String> {
     let manifest: Value = serde_json::from_str(include_str!("../runtime/resources-manifest.json"))
         .map_err(|_| "Manifest del runtime inválido")?;
-    verify_manifest(runtime, &manifest)
+    verify_with_retry(runtime, &manifest, 4, Duration::from_millis(400))
+}
+fn verify_with_retry(
+    runtime: &Path,
+    manifest: &Value,
+    attempts: usize,
+    delay: Duration,
+) -> Result<(), String> {
+    let mut last_err = String::new();
+    for attempt in 0..attempts.max(1) {
+        match verify_manifest(runtime, manifest) {
+            Ok(()) => return Ok(()),
+            Err(err) => {
+                last_err = err;
+                if attempt + 1 < attempts {
+                    thread::sleep(delay);
+                }
+            }
+        }
+    }
+    Err(last_err)
 }
 fn verify_manifest(runtime: &Path, manifest: &Value) -> Result<(), String> {
     let root = runtime.canonicalize().map_err(|_| "Runtime ausente")?;
@@ -83,6 +106,17 @@ mod tests {
         assert!(verify_manifest(&root, &manifest).is_ok());
         fs::write(root.join("fixture"), b"modified").unwrap();
         assert!(verify_manifest(&root, &manifest).is_err());
+        assert!(
+            verify_with_retry(&root, &manifest, 2, Duration::from_millis(5)).is_err(),
+            "persistent mismatch still fails closed"
+        );
+        let root_clone = root.clone();
+        let writer = thread::spawn(move || {
+            thread::sleep(Duration::from_millis(15));
+            fs::write(root_clone.join("fixture"), b"original").unwrap();
+        });
+        assert!(verify_with_retry(&root, &manifest, 4, Duration::from_millis(15)).is_ok());
+        writer.join().unwrap();
         assert!(verify_manifest(&root, &serde_json::json!({"files":{"../escape":{}}})).is_err());
         fs::remove_dir_all(root).unwrap();
     }
