@@ -49,6 +49,12 @@ test('launch environment preserves native OS paths and drops unrelated variable 
  assert.equal(env.BIANK_DESKTOP_DEV,'0');assert.equal(env.BIANK_STANDALONE,'1');
  assert.equal(env.BIANK_ACCESS_ENV_FILE,join('/tmp/synthetic','config','access.env'));
 });
+test('isolated Node and Rust processes receive the same native temp parent despite aliases or conflicting TEMP/TMP',()=>{
+ const root=join(realpathSync.native(tmpdir()),'biank-installed-smoke-'+'a'.repeat(32));
+ const env=isolatedEnvironment({Temp:'short-alias',tMp:'other-directory',TMPDIR:'third-directory'},root,join(root,'qa','context.json'));
+ for(const key of ['TEMP','TMP','TMPDIR'])assert.equal(env[key],dirname(root));
+ assert.deepEqual(Object.keys(env).filter(key=>['temp','tmp','tmpdir'].includes(key.toLowerCase())).sort(),['TEMP','TMP','TMPDIR']);
+});
 test('a mutable or absent candidate identifier cannot start a process',async()=>{
  for(const value of [undefined,'main','abc','C'.repeat(40)])await assert.rejects(validateSecondBoot('/candidate',value,{spawn:()=>assert.fail('must not launch')}),error=>error.code==='CANDIDATE_SHA');
 });

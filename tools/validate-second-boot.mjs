@@ -1,6 +1,6 @@
 import {spawn} from 'node:child_process';
 import {mkdirSync,writeFileSync,readFileSync,lstatSync,realpathSync,existsSync,renameSync} from 'node:fs';
-import {tmpdir} from 'node:os';import {join,resolve} from 'node:path';import {randomBytes} from 'node:crypto';
+import {tmpdir} from 'node:os';import {join,resolve,dirname} from 'node:path';import {randomBytes} from 'node:crypto';
 import {pathToFileURL} from 'node:url';
 import {SmokeError,verifyVault,verifyUi,verifyShutdown} from './installed-smoke-protocol.mjs';
 const sleep=ms=>new Promise(resolve=>setTimeout(resolve,ms));
@@ -13,10 +13,13 @@ export function isolatedEnvironment(original,root,context){
   const env={};
   const osKeys=new Set(['path','pathext','systemroot','windir','comspec','temp','tmp','tmpdir','home','userprofile','localappdata','appdata','programfiles','programfiles(x86)','commonprogramfiles','commonprogramfiles(x86)','programdata','username','userdomain','user','logname','shell','lang','display','wayland_display','xauthority','xdg_runtime_dir','dbus_session_bus_address','number_of_processors','processor_architecture','__cf_user_text_encoding']);
   for(const [key,value] of Object.entries(original)){
+    if(['temp','tmp','tmpdir'].includes(key.toLowerCase()))continue;
     if(!osKeys.has(key.toLowerCase())&&!/^LC_[A-Z_]+$/.test(key))continue;
     env[key]=value;
   }
-  return {...env,BIANK_DATA_ROOT:root,BIANK_DESKTOP_CONFIG_ROOT:join(root,'config'),BIANK_DESKTOP_DATA_ROOT:join(root,'data'),
+  // Node and Rust/Windows prefer TEMP/TMP in different orders. Give this child
+  // the same native parent selected by the controller, never a different root.
+  return {...env,TEMP:dirname(root),TMP:dirname(root),TMPDIR:dirname(root),BIANK_DATA_ROOT:root,BIANK_DESKTOP_CONFIG_ROOT:join(root,'config'),BIANK_DESKTOP_DATA_ROOT:join(root,'data'),
     BIANK_INSTALLED_SMOKE_CONTEXT:context,BIANK_DESKTOP_DEV:'0',BIANK_STANDALONE:'1',BIANK_ACCOUNT_REQUIRED:'1',
     BIANK_ACCESS_ENV_FILE:join(root,'config','access.env'),BIANK_GOOGLE_CLIENT_SECRET_FILE:join(root,'config','google-client.secret')};
 }
