@@ -80,7 +80,24 @@ jobs:
         working-directory: .core/apps/desktop/coordinator
         env:
           BIANK_TEST_PHASE_TRACE_DIR: ${{ runner.temp }}/cur160-test-phases
-        run: npm test
+        run: |
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            npm run pretest
+            node -e '
+              const { readFileSync } = require("node:fs");
+              const { spawnSync } = require("node:child_process");
+              const command = JSON.parse(readFileSync("package.json", "utf8")).scripts.test;
+              const args = command.trim().split(/\s+/).slice(1);
+              const index = args.findIndex((arg) => arg.startsWith("--test-concurrency="));
+              if (index < 0) throw new Error("The coordinator test script must declare --test-concurrency");
+              args[index] = "--test-concurrency=2";
+              const result = spawnSync(process.execPath, args, { stdio: "inherit" });
+              if (result.error) throw result.error;
+              process.exitCode = result.status ?? 1;
+            '
+          else
+            npm test
+          fi
       - name: Retain bounded test phase diagnostics
         if: always()
         uses: actions/upload-artifact@v4
