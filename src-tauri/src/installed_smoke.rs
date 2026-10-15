@@ -376,7 +376,7 @@ pub fn validate(
     if root.parent() != Some(dunce::simplified(&temp))
         || root.file_name().and_then(|n| n.to_str())
             != Some(format!("biank-installed-smoke-{}", context.run_id).as_str())
-        || context_path != root.join("qa/context.json")
+        || context_path != root.join("qa").join("context.json")
     {
         return Err(INVALID.into());
     }
@@ -386,17 +386,17 @@ pub fn validate(
     for (key, expected) in [
         ("BIANK_DESKTOP_DATA_ROOT", root.join("data")),
         ("BIANK_DESKTOP_CONFIG_ROOT", root.join("config")),
-        ("BIANK_ACCESS_ENV_FILE", root.join("config/access.env")),
+        ("BIANK_ACCESS_ENV_FILE", root.join("config").join("access.env")),
         (
             "BIANK_GOOGLE_CLIENT_SECRET_FILE",
-            root.join("config/google-client.secret"),
+            root.join("config").join("google-client.secret"),
         ),
     ] {
         if env(key).as_deref() != Some(expected.as_os_str()) {
             return Err(INVALID.into());
         }
     }
-    let (initial, initial_raw): (Initial, _) = read_json(&root.join("qa/initial.json"))?;
+    let (initial, initial_raw): (Initial, _) = read_json(&root.join("qa").join("initial.json"))?;
     if initial.schema_version != 1
         || initial.purpose != PURPOSE
         || initial.root != context.root
@@ -433,8 +433,8 @@ impl Validated {
     }
     pub fn revalidate(&self) -> Result<()> {
         tree(self.root(), self.root(), 0, &mut 0)?;
-        let (_, context): (Context, _) = read_json(&self.root().join("qa/context.json"))?;
-        let (_, initial): (Initial, _) = read_json(&self.root().join("qa/initial.json"))?;
+        let (_, context): (Context, _) = read_json(&self.root().join("qa").join("context.json"))?;
+        let (_, initial): (Initial, _) = read_json(&self.root().join("qa").join("initial.json"))?;
         if context != self.context_raw || initial != self.initial_raw {
             return Err(INVALID.into());
         }
@@ -516,20 +516,20 @@ impl Validated {
         }
         // Values contain context and status only. The key remains exclusively
         // on the existing vault stdin path; no key bytes reach an attestation.
-        cmd.env(CONTEXT_ENV,self.root().join("qa/context.json"))
+        cmd.env(CONTEXT_ENV,self.root().join("qa").join("context.json"))
             .env("BIANK_INSTALLED_SMOKE_CORE_SHA",candidate.sha())
             .env("BIANK_INSTALLED_SMOKE_SHELL_ATTESTATION",json!({"schemaVersion":1,
                 "runId":self.context.run_id,"nonce":self.context.nonce,"boot":self.context.boot,
                 "candidateSha":self.context.candidate_sha,"rootSha256":digest(self.context.root.as_bytes()),
                 "nativeKeyring":true,"development":false,"keyFileOverride":false,"resourceOverride":false,"stdinKey":true}).to_string())
             .env("BIANK_DESKTOP_CONFIG_ROOT",self.root().join("config"))
-            .env("BIANK_ACCESS_ENV_FILE",self.root().join("config/access.env"))
-            .env("BIANK_GOOGLE_CLIENT_SECRET_FILE",self.root().join("config/google-client.secret"));
+            .env("BIANK_ACCESS_ENV_FILE",self.root().join("config").join("access.env"))
+            .env("BIANK_GOOGLE_CLIENT_SECRET_FILE",self.root().join("config").join("google-client.secret"));
         Ok(())
     }
     pub fn read_vault(&self, boot: u8) -> Result<VaultReceipt> {
         let (value, _): (VaultReceipt, _) =
-            read_json(&self.root().join(format!("qa/vault-boot-{boot}.json")))?;
+            read_json(&self.root().join("qa").join(format!("vault-boot-{boot}.json")))?;
         if value.schema_version != 1
             || value.kind != "vault"
             || value.run_id != self.context.run_id
@@ -560,7 +560,7 @@ impl Validated {
         self.revalidate()?;
         let path = self
             .root()
-            .join(format!("qa/{kind}-boot-{}.json", self.context.boot));
+            .join("qa").join(format!("{kind}-boot-{}.json", self.context.boot));
         let mut file = fs::OpenOptions::new()
             .create_new(true)
             .write(true)
@@ -602,7 +602,7 @@ mod tests {
                 boot: 1,
                 candidate_sha: "b".repeat(40),
             };
-            fs::write(root.join("qa/initial.json"),json!({"schemaVersion":1,"purpose":PURPOSE,"root":context.root,
+            fs::write(root.join("qa").join("initial.json"),json!({"schemaVersion":1,"purpose":PURPOSE,"root":context.root,
                 "runId":context.run_id,"initialNonce":context.nonce,"candidateSha":context.candidate_sha}).to_string()).unwrap();
             let fixture = Self { root, context };
             fixture.write_context();
@@ -610,7 +610,7 @@ mod tests {
         }
         fn write_context(&self) {
             fs::write(
-                self.root.join("qa/context.json"),
+                self.root.join("qa").join("context.json"),
                 serde_json::to_vec(&self.context).unwrap(),
             )
             .unwrap();
@@ -623,11 +623,11 @@ mod tests {
                 "BIANK_DESKTOP_DATA_ROOT" => Some(self.root.join("data").into_os_string()),
                 "BIANK_DESKTOP_CONFIG_ROOT" => Some(self.root.join("config").into_os_string()),
                 "BIANK_ACCESS_ENV_FILE" => {
-                    Some(self.root.join("config/access.env").into_os_string())
+                    Some(self.root.join("config").join("access.env").into_os_string())
                 }
                 "BIANK_GOOGLE_CLIENT_SECRET_FILE" => Some(
                     self.root
-                        .join("config/google-client.secret")
+                        .join("config").join("google-client.secret")
                         .into_os_string(),
                 ),
                 _ => None,
@@ -635,14 +635,14 @@ mod tests {
         }
         fn preflight(&self) -> Result<Validated> {
             validate(
-                Some(self.root.join("qa/context.json").into_os_string()),
+                Some(self.root.join("qa").join("context.json").into_os_string()),
                 false,
                 |k| self.env(k),
             )
             .map(|v| v.unwrap())
         }
         fn vault(&self, boot: u8, instance: &str, pid: u32) {
-            fs::write(self.root.join(format!("qa/vault-boot-{boot}.json")),json!({"schemaVersion":1,"kind":"vault",
+            fs::write(self.root.join("qa").join(format!("vault-boot-{boot}.json")),json!({"schemaVersion":1,"kind":"vault",
                 "runId":self.context.run_id,"nonce":if boot==1 {"a".repeat(64)} else {self.context.nonce.clone()},"boot":boot,
                 "candidateSha":self.context.candidate_sha,"rootSha256":digest(self.context.root.as_bytes()),"engineInstanceId":instance,
                 "enginePid":pid,"operation":if boot==1 {"put"}else{"resolve"},"digestSha256":"c".repeat(64)}).to_string()).unwrap();
@@ -662,6 +662,32 @@ mod tests {
         );
     }
     #[test]
+    fn child_context_uses_native_canonical_protocol_paths() {
+        let f = Fixture::new();
+        let v = f.preflight().unwrap();
+        v.prepare_config().unwrap();
+        let mut cmd = std::process::Command::new("unused");
+        v.child_context(&mut cmd, &BoundCandidate { sha: f.context.candidate_sha.clone() }).unwrap();
+        for (key, expected) in [
+            (CONTEXT_ENV, f.root.join("qa").join("context.json")),
+            ("BIANK_ACCESS_ENV_FILE", f.root.join("config").join("access.env")),
+            ("BIANK_GOOGLE_CLIENT_SECRET_FILE", f.root.join("config").join("google-client.secret")),
+        ] {
+            let actual = cmd.get_envs().find(|(name, _)| *name == key).unwrap().1.unwrap();
+            assert_eq!(actual, expected.as_os_str());
+            assert_eq!(canonical(Path::new(actual)).unwrap().as_os_str(), actual);
+        }
+        f.vault(1, "engine-instance-0001", 123);
+        assert_eq!(v.read_vault(1).unwrap().engine_pid, 123);
+        assert!(canonical(&f.root.join("qa").join("vault-boot-1.json")).is_ok());
+        #[cfg(windows)]
+        {
+            // A mixed-separator alias still fails; the guard is not relaxed.
+            let mixed = f.root.join("qa/context.json");
+            assert!(canonical(&mixed).is_err());
+        }
+    }
+    #[test]
     fn preflight_is_read_only_and_pristine_precedes_config_or_logs() {
         let f = Fixture::new();
         let v = f.preflight().unwrap();
@@ -671,13 +697,13 @@ mod tests {
         v.revalidate().unwrap();
         assert!(!f.root.join("logs").exists());
         assert!(!f.root.join("data").exists());
-        fs::write(f.root.join("config/access.env"), "not empty").unwrap();
+        fs::write(f.root.join("config").join("access.env"), "not empty").unwrap();
         assert!(v.revalidate().is_err());
     }
     #[test]
     fn duplicate_unknown_null_or_coerced_fields_are_rejected() {
         let f = Fixture::new();
-        let raw = fs::read_to_string(f.root.join("qa/context.json")).unwrap();
+        let raw = fs::read_to_string(f.root.join("qa").join("context.json")).unwrap();
         for bad in [
             raw.replacen('{', "{\"boot\":1,", 1),
             raw.replacen('{', "{\"extra\":1,", 1),
@@ -685,16 +711,16 @@ mod tests {
             raw.replace("\"boot\":1", "\"boot\":null"),
             format!("\u{feff}{raw}"),
         ] {
-            fs::write(f.root.join("qa/context.json"), bad).unwrap();
+            fs::write(f.root.join("qa").join("context.json"), bad).unwrap();
             assert!(f.preflight().is_err());
         }
-        fs::write(f.root.join("qa/context.json"), " ".repeat(4097)).unwrap();
+        fs::write(f.root.join("qa").join("context.json"), " ".repeat(4097)).unwrap();
         assert!(f.preflight().is_err());
     }
     #[test]
     fn overrides_development_and_external_roots_fail_before_writes() {
         let f = Fixture::new();
-        let path = Some(f.root.join("qa/context.json").into_os_string());
+        let path = Some(f.root.join("qa").join("context.json").into_os_string());
         assert!(validate(path.clone(), true, |k| f.env(k)).is_err());
         for key in [
             "BIANK_DESKTOP_VAULT_KEY_FILE",
@@ -712,7 +738,7 @@ mod tests {
             .is_err());
         }
         assert!(validate(
-            Some(f.root.join("qa/initial.json").into_os_string()),
+            Some(f.root.join("qa").join("initial.json").into_os_string()),
             false,
             |k| f.env(k)
         )
@@ -788,7 +814,7 @@ mod tests {
         assert!(serde_json::from_value::<UiReport>(json!({"nonce":"x","health":true,"login":true,"accountRequired":true,"unauthenticated":true,"bridge":true,"enginePid":42})).is_err());
         s.accept_ui("main", &s.origin, &report(&f.context.nonce))
             .unwrap();
-        let (ui, _): (Value, _) = read_json(&f.root.join("qa/ui-boot-1.json")).unwrap();
+        let (ui, _): (Value, _) = read_json(&f.root.join("qa").join("ui-boot-1.json")).unwrap();
         assert_eq!(ui.as_object().unwrap().len(), 15);
         assert_eq!(ui["kind"], "ui");
         assert_eq!(ui["shellPid"], std::process::id());
@@ -797,7 +823,7 @@ mod tests {
             .is_err());
         s.record_shutdown().unwrap();
         assert!(s.record_shutdown().is_err());
-        let (shutdown, _): (Value, _) = read_json(&f.root.join("qa/shutdown-boot-1.json")).unwrap();
+        let (shutdown, _): (Value, _) = read_json(&f.root.join("qa").join("shutdown-boot-1.json")).unwrap();
         assert_eq!(shutdown.as_object().unwrap().len(), 12);
         assert_eq!(shutdown["kind"], "shutdown");
     }
@@ -819,7 +845,7 @@ mod tests {
         f.context.nonce = "0".repeat(64);
         f.write_context();
         assert!(s.validated.revalidate().is_err());
-        assert!(!f.root.join("qa/ui-boot-1.json").exists());
+        assert!(!f.root.join("qa").join("ui-boot-1.json").exists());
     }
     #[test]
     fn probe_injects_only_public_context_at_exactly_one_placeholder() {
@@ -859,21 +885,21 @@ mod tests {
         let f = Fixture::new();
         let v = f.preflight().unwrap();
         fs::hard_link(
-            f.root.join("qa/initial.json"),
-            f.root.join("qa/linked.json"),
+            f.root.join("qa").join("initial.json"),
+            f.root.join("qa").join("linked.json"),
         )
         .unwrap();
         assert!(v.revalidate().is_err());
-        fs::remove_file(f.root.join("qa/linked.json")).unwrap();
-        fs::create_dir_all(f.root.join("data/profiles")).unwrap();
+        fs::remove_file(f.root.join("qa").join("linked.json")).unwrap();
+        fs::create_dir_all(f.root.join("data").join("profiles")).unwrap();
         assert!(v.revalidate().is_err());
     }
     #[test]
     fn only_closed_empty_account_state_and_empty_profile_registry_are_allowed() {
         let f = Fixture::new();
         let v = f.preflight().unwrap();
-        fs::create_dir_all(f.root.join("data/identity")).unwrap();
-        let accounts = f.root.join("data/identity/product-accounts.json");
+        fs::create_dir_all(f.root.join("data").join("identity")).unwrap();
+        let accounts = f.root.join("data").join("identity").join("product-accounts.json");
         fs::write(&accounts, r#"{"version":1,"active":null,"users":[]}"#).unwrap();
         v.revalidate().unwrap();
         for bad in [
@@ -888,18 +914,18 @@ mod tests {
         }
         fs::remove_file(accounts).unwrap();
         fs::write(
-            f.root.join("data/product-accounts.json"),
+            f.root.join("data").join("product-accounts.json"),
             r#"{"version":1,"active":null,"users":[]}"#,
         )
         .unwrap();
         fs::write(
-            f.root.join("data/account-profiles.json"),
+            f.root.join("data").join("account-profiles.json"),
             r#"{"version":1,"legacyOwner":null,"legacyStores":null,"backup":null}"#,
         )
         .unwrap();
         v.revalidate().unwrap();
         fs::write(
-            f.root.join("data/identity/google-identity-session.json"),
+            f.root.join("data").join("identity").join("google-identity-session.json"),
             "{}",
         )
         .unwrap();
@@ -937,8 +963,8 @@ mod tests {
             .accept_ui("main", &session.origin, &report(&f.context.nonce))
             .unwrap();
         session.record_shutdown().unwrap();
-        assert!(f.root.join("qa/ui-boot-2.json").is_file());
-        assert!(f.root.join("qa/shutdown-boot-2.json").is_file());
+        assert!(f.root.join("qa").join("ui-boot-2.json").is_file());
+        assert!(f.root.join("qa").join("shutdown-boot-2.json").is_file());
     }
     #[test]
     fn child_environment_whitelist_excludes_credentials_and_ci_grants() {
