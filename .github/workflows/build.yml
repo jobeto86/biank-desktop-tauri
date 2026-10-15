@@ -24,7 +24,15 @@ concurrency:
   group: tauri-candidate-${{ github.ref }}-${{ inputs.core_sha }}-${{ inputs.windows_only }}-${{ inputs.macos_only }}
   cancel-in-progress: false
 jobs:
+  quality:
+    uses: ./.github/workflows/coordinator-quality.yml
+    with:
+      core_sha: ${{ inputs.core_sha }}
+      platform: ${{ inputs.windows_only && 'windows' || inputs.macos_only && 'macos' || 'both' }}
+    secrets:
+      BIANK_CORE_READ_SSH_KEY: ${{ secrets.BIANK_CORE_READ_SSH_KEY }}
   build:
+    needs: quality
     strategy:
       fail-fast: false
       matrix:
@@ -92,6 +100,7 @@ jobs:
       - name: Stage bundled runtimes
         env:
           BIANK_CORE_DESKTOP: ${{ github.workspace }}/.core/apps/desktop
+          BIANK_CORE_SHA: ${{ inputs.core_sha }}
           BIANK_GOOGLE_CLIENT_ID: ${{ vars.BIANK_GOOGLE_CLIENT_ID }}
         run: |
           node tools/stage-codex.mjs
@@ -169,6 +178,8 @@ jobs:
           if ($installed.ExitCode -ne 0) { throw "NSIS installation failed: $($installed.ExitCode)" }
           node tools/validate-installed.mjs "$destination/biank-desktop.exe"
           if ($LASTEXITCODE -ne 0) { throw 'Installed Windows validation failed' }
+          node tools/validate-second-boot.mjs "$destination/biank-desktop.exe" '${{ inputs.core_sha }}' "$env:RUNNER_TEMP/cur160-second-boot.json"
+          if ($LASTEXITCODE -ne 0) { throw 'Installed Windows second boot validation failed' }
       - name: Upgrade from 0.3.9 with a large profile on the installed Windows candidate
         if: runner.os == 'Windows'
         shell: pwsh
@@ -191,7 +202,16 @@ jobs:
           codesign --verify --deep --strict --verbose=2 "$RUNNER_TEMP/Biank-Installed-QA.app"
           codesign --display --verbose=4 "$RUNNER_TEMP/Biank-Installed-QA.app" 2>&1 | grep -Fx 'Signature=adhoc'
           node tools/validate-installed.mjs "$RUNNER_TEMP/Biank-Installed-QA.app/Contents/MacOS/biank-desktop"
+          node tools/validate-second-boot.mjs "$RUNNER_TEMP/Biank-Installed-QA.app/Contents/MacOS/biank-desktop" '${{ inputs.core_sha }}' "$RUNNER_TEMP/cur160-second-boot.json"
           node tools/assess-macos.mjs "$RUNNER_TEMP/Biank-Installed-QA.app" "$RUNNER_TEMP/macos-trust.json"
+      - name: Retain installed second boot receipt
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cur160-second-boot-${{ runner.os }}
+          path: ${{ runner.temp }}/cur160-second-boot.json
+          if-no-files-found: ignore
+          retention-days: 5
       - name: Retain macOS trust assessment
         if: runner.os == 'macOS'
         uses: actions/upload-artifact@v4

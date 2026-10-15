@@ -87,6 +87,7 @@ pub struct Config {
     pub resources: PathBuf,
     pub version: String,
     pub development: bool,
+    pub installed_smoke: Option<crate::installed_smoke::Validated>,
 }
 pub struct Supervisor {
     pub connection: Connection,
@@ -116,6 +117,32 @@ impl Supervisor {
         mut key: Option<Vec<u8>>,
         mut progress: impl FnMut(&str, &str),
     ) -> Result<Self, String> {
+        let candidate = if let Some(smoke) = &config.installed_smoke {
+            let validate = (|| {
+                if config.development
+                    || config.root != smoke.root()
+                    || key.as_ref().is_none_or(|key| key.len() != 32)
+                {
+                    return Err("CUR160_NATIVE_CUSTODY_REQUIRED".to_string());
+                }
+                smoke.revalidate()?;
+                smoke.bind_candidate(
+                    include_str!("../runtime/resources-manifest.json"),
+                    &config.resources.join("runtime"),
+                )
+            })();
+            match validate {
+                Ok(candidate) => Some(candidate),
+                Err(error) => {
+                    if let Some(secret) = key.as_mut() {
+                        secret.zeroize();
+                    }
+                    return Err(error);
+                }
+            }
+        } else {
+            None
+        };
         let runtime = config.resources.join("runtime");
         let script = runtime.join("coordinator/index.mjs");
         let node = runtime.join(if cfg!(windows) {
@@ -173,6 +200,14 @@ impl Supervisor {
             .open(config.root.join("logs/engine.log"))
             .map_err(|_| "No se pudo abrir el log")?;
         let mut cmd = Command::new(node);
+        if config.installed_smoke.is_some() {
+            cmd.env_clear();
+            for (name, value) in std::env::vars_os() {
+                if crate::installed_smoke::os_environment_key(&name.to_string_lossy()) {
+                    cmd.env(name, value);
+                }
+            }
+        }
         cmd.arg("--experimental-sqlite")
             .arg(script)
             .arg("--root")
@@ -243,6 +278,9 @@ impl Supervisor {
         }
         if config.development {
             cmd.env("BIANK_DESKTOP_CONFIG_ROOT", config.root.join("data/config"));
+        }
+        if let (Some(smoke), Some(candidate)) = (&config.installed_smoke, &candidate) {
+            smoke.child_context(&mut cmd, candidate)?;
         }
         #[cfg(windows)]
         {
@@ -315,10 +353,14 @@ const STARTUP_STALL: Duration = Duration::from_secs(60);
 const STARTUP_CEILING: Duration = Duration::from_secs(600);
 fn startup_expired(started: Instant, last_progress: Instant, now: Instant) -> Option<&'static str> {
     if now.duration_since(last_progress) > STARTUP_STALL {
-        return Some("El motor no acreditó su arranque tras 60 s sin actividad. Se conservan tus datos.");
+        return Some(
+            "El motor no acreditó su arranque tras 60 s sin actividad. Se conservan tus datos.",
+        );
     }
     if now.duration_since(started) > STARTUP_CEILING {
-        return Some("El arranque excedió el límite de seguridad (10 min). Se conservan tus datos.");
+        return Some(
+            "El arranque excedió el límite de seguridad (10 min). Se conservan tus datos.",
+        );
     }
     None
 }
@@ -392,8 +434,12 @@ mod tests {
         let start = Instant::now();
         let s = Duration::from_secs;
         assert!(startup_expired(start, start + s(170), start + s(180)).is_none());
-        assert!(startup_expired(start, start + s(119), start + s(180)).unwrap().contains("60 s"));
-        assert!(startup_expired(start, start + s(600), start + s(601)).unwrap().contains("10 min"));
+        assert!(startup_expired(start, start + s(119), start + s(180))
+            .unwrap()
+            .contains("60 s"));
+        assert!(startup_expired(start, start + s(600), start + s(601))
+            .unwrap()
+            .contains("10 min"));
     }
     #[test]
     fn saved_port_survives_restart_and_a_busy_port_is_not_taken_over() {

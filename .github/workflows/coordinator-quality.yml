@@ -1,5 +1,16 @@
 name: Coordinator native quality (CUR-160)
 on:
+  workflow_call:
+    inputs:
+      core_sha:
+        required: true
+        type: string
+      platform:
+        type: string
+        default: both
+    secrets:
+      BIANK_CORE_READ_SSH_KEY:
+        required: true
   workflow_dispatch:
     inputs:
       core_sha:
@@ -67,4 +78,14 @@ jobs:
         run: npm ci --no-fund && npm run build
       - name: Full coordinator suite must pass
         working-directory: .core/apps/desktop/coordinator
+        env:
+          BIANK_TEST_PHASE_TRACE_DIR: ${{ runner.temp }}/cur160-test-phases
         run: npm test
+      - name: Retain bounded test phase diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cur160-test-phases-${{ runner.os }}
+          path: ${{ runner.temp }}/cur160-test-phases/*.jsonl
+          if-no-files-found: ignore
+          retention-days: 5
