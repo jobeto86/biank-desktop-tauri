@@ -3,6 +3,7 @@ fn main() {
         tauri_build::AppManifest::new().commands(&[
             "get_desktop_info",
             "qa_report",
+            "installed_smoke_report",
             "show_about",
             "set_theme",
             "focus_main",

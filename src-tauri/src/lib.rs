@@ -1,5 +1,6 @@
 pub mod engine;
 mod imports;
+mod installed_smoke;
 mod resources;
 pub mod transport;
 mod updates;
@@ -21,6 +22,7 @@ use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_shell::ShellExt;
 struct Boot {
     preparing: AtomicBool,
+    smoke: Option<installed_smoke::Validated>,
 }
 fn shell_log(message: &str) {
     use std::io::Write;
@@ -89,6 +91,45 @@ fn qa_report(state: Value) -> Result<(), String> {
     let evidence = json!({"authBrowser":state["authBrowser"].as_bool().unwrap_or(false),"bridge":state["bridge"].as_bool().unwrap_or(false),"health":state["health"].as_bool().unwrap_or(false),"login":state["login"].as_bool().unwrap_or(false)});
     std::fs::write(root.join("qa-ui.json"), evidence.to_string())
         .map_err(|_| "No se pudo guardar la evidencia QA".into())
+}
+// Separate from qa_report: typed, first-party only, no arbitrary fields or keys.
+#[tauri::command]
+async fn installed_smoke_report(
+    app: AppHandle,
+    window: tauri::WebviewWindow,
+    report: installed_smoke::UiReport,
+) -> Result<(), String> {
+    let smoke = app
+        .try_state::<installed_smoke::Session>()
+        .ok_or("CUR160_SMOKE_INACTIVE")?;
+    let origin = window
+        .url()
+        .map_err(|_| "CUR160_UI_REJECTED")?
+        .origin()
+        .ascii_serialization();
+    if window.label() != "main" || origin != smoke.origin {
+        return Err("CUR160_UI_REJECTED".into());
+    }
+    let desktop = app.try_state::<Desktop>().ok_or("CUR160_ENGINE_MISSING")?;
+    if desktop.connection.instance != smoke.engine_instance {
+        return Err("CUR160_ENGINE_IDENTITY".into());
+    }
+    let health = desktop.connection.request("/api/health", None).await?;
+    if !engine::valid_identity(&health, &smoke.engine_instance) {
+        return Err("CUR160_ENGINE_IDENTITY".into());
+    }
+    // Recheck current window after the await; navigation never confers authority.
+    if window
+        .url()
+        .map_err(|_| "CUR160_UI_REJECTED")?
+        .origin()
+        .ascii_serialization()
+        != origin
+    {
+        return Err("CUR160_UI_REJECTED".into());
+    }
+    smoke.accept_ui(window.label(), &origin, &report)?;
+    installer_close(app.clone()).await
 }
 #[tauri::command]
 fn focus_main(app: AppHandle) -> Result<(), String> {
@@ -200,6 +241,25 @@ async fn installer_close(app: AppHandle) -> Result<(), String> {
         state.exiting.store(false, Ordering::SeqCst);
         return Err(error);
     }
+    if let Some(smoke) = app.try_state::<installed_smoke::Session>() {
+        let result = (|| -> Result<(), String> {
+            let mut child = state._child.lock().map_err(|_| "CUR160_ENGINE_EXIT")?;
+            let child = child.as_mut().ok_or("CUR160_ENGINE_EXIT")?;
+            if child.id() != smoke.engine_pid
+                || !child
+                    .try_wait()
+                    .map_err(|_| "CUR160_ENGINE_EXIT")?
+                    .is_some_and(|status| status.success())
+            {
+                return Err("CUR160_ENGINE_EXIT".into());
+            }
+            smoke.record_shutdown()
+        })();
+        if let Err(error) = result {
+            state.exiting.store(false, Ordering::SeqCst);
+            return Err(error);
+        }
+    }
     app.exit(0);
     Ok(())
 }
@@ -238,6 +298,7 @@ fn startup_status(app: &AppHandle, phase: &str, detail: &str) {
     }
 }
 async fn start(app: AppHandle) -> Result<(), String> {
+    let smoke = app.state::<Boot>().smoke.clone();
     startup_status(&app, "resources", "Verificando la instalación…");
     shell_log("biank-shell: verificando runtime");
     let (root, development) = data_root()?;
@@ -260,6 +321,15 @@ async fn start(app: AppHandle) -> Result<(), String> {
     // Keep a compatible equivalent when crossing into Node and its URL/path APIs.
     let resources = dunce::simplified(&resources).to_path_buf();
     resources::verify(&resources.join("runtime"))?;
+    if let Some(smoke) = &smoke {
+        // Measured packaged metadata, covered by the compiled resource manifest,
+        // before touching native custody. Config is created only after pristine.
+        smoke.bind_candidate(
+            include_str!("../runtime/resources-manifest.json"),
+            &resources.join("runtime"),
+        )?;
+        smoke.prepare_config()?;
+    }
     shell_log("biank-shell: runtime verificado");
     startup_status(&app, "vault", "Abriendo tu almacén seguro…");
     let key = vault::open(&root, development)?;
@@ -271,6 +341,7 @@ async fn start(app: AppHandle) -> Result<(), String> {
             resources,
             version: env!("CARGO_PKG_VERSION").into(),
             development,
+            installed_smoke: smoke.clone(),
         },
         key,
         |phase, detail| startup_status(&app, phase, detail),
@@ -278,6 +349,7 @@ async fn start(app: AppHandle) -> Result<(), String> {
     .await?;
     startup_status(&app, "ready", "Abriendo Biank…");
     shell_log("biank-shell: motor verificado");
+    let engine_pid = supervisor.child.id();
     let connection = supervisor.connection.clone();
     app.manage(Desktop {
         connection: supervisor.connection,
@@ -287,16 +359,38 @@ async fn start(app: AppHandle) -> Result<(), String> {
     });
     let transport = transport::Transport::start(connection).await?;
     let origin = transport.origin.clone();
+    if let Some(validated) = smoke {
+        app.manage(installed_smoke::Session {
+            validated,
+            engine_instance: transport.engine.instance.clone(),
+            engine_pid,
+            origin: origin.clone(),
+            reported: AtomicBool::new(false),
+        });
+    }
     let url: tauri::Url = format!("{origin}/")
         .parse()
         .map_err(|_| "Transporte inválido")?;
-    let capability = json!({"identifier":"local-runtime","windows":["main"],"remote":{"urls":[format!("{origin}/*")]},"permissions":["core:default","allow-get-desktop-info","allow-qa-report","allow-show-about","allow-set-theme","allow-focus-main","allow-open-external","allow-browser-action","allow-zoom-view","allow-request-exit","allow-import-select","allow-import-apply","allow-update-state","allow-check-update","allow-apply-update"]});
+    let mut capability = json!({"identifier":"local-runtime","windows":["main"],"remote":{"urls":[format!("{origin}/*")]},"permissions":["core:default","allow-get-desktop-info","allow-qa-report","allow-show-about","allow-set-theme","allow-focus-main","allow-open-external","allow-browser-action","allow-zoom-view","allow-request-exit","allow-import-select","allow-import-apply","allow-update-state","allow-check-update","allow-apply-update"]});
+    if app.try_state::<installed_smoke::Session>().is_some() {
+        capability["permissions"]
+            .as_array_mut()
+            .ok_or("CUR160_ACL_INVALID")?
+            .push(json!("allow-installed-smoke-report"));
+    }
     app.add_capability(capability.to_string())
         .map_err(|_| "No se pudo restringir el bridge local")?;
     let handle = app.clone();
     let mut bridge = include_str!("../../tools/bridge.js").to_string();
     if development {
         bridge.push_str(include_str!("../../tools/qa-bridge.js"));
+    }
+    if let Some(smoke) = app.try_state::<installed_smoke::Session>() {
+        bridge.push_str(&smoke.validated.probe_script(
+            include_str!("../../tools/installed-smoke-bridge.js"),
+            &smoke.engine_instance,
+            &origin,
+        )?);
     }
     app.run_on_main_thread(move || {
         let result = (|| -> tauri::Result<()> {
@@ -347,6 +441,15 @@ async fn start(app: AppHandle) -> Result<(), String> {
 }
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Before Builder/setup, plugins, shell_log (which materializes logs), data
+    // stores, vault, tray and updater. An absent context performs no smoke IO.
+    let smoke = match installed_smoke::preflight(cfg!(debug_assertions)) {
+        Ok(context) => context,
+        Err(code) => {
+            eprintln!("{code}");
+            std::process::exit(1);
+        }
+    };
     tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, args, _| {
             if args.iter().any(|arg| arg == "--installer-close") {
@@ -366,6 +469,7 @@ pub fn run() {
         .plugin(tauri_plugin_updater::Builder::new().build())
         .manage(Boot {
             preparing: AtomicBool::new(true),
+            smoke,
         })
         .manage(updates::Updates::default())
         .manage(imports::Imports::default())
@@ -400,13 +504,15 @@ pub fn run() {
                 })
                 .build(app)?;
             shell_log("biank-shell: bandeja lista");
-            let updater = app.handle().clone();
-            tauri::async_runtime::spawn(async move {
-                loop {
-                    let _ = updates::check_update(updater.clone()).await;
-                    tokio::time::sleep(std::time::Duration::from_secs(21600)).await;
-                }
-            });
+            if app.state::<Boot>().smoke.is_none() {
+                let updater = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    loop {
+                        let _ = updates::check_update(updater.clone()).await;
+                        tokio::time::sleep(std::time::Duration::from_secs(21600)).await;
+                    }
+                });
+            }
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
                 let result = start(handle.clone()).await;
@@ -424,6 +530,7 @@ pub fn run() {
         .invoke_handler(tauri::generate_handler![
             get_desktop_info,
             qa_report,
+            installed_smoke_report,
             show_about,
             set_theme,
             focus_main,
