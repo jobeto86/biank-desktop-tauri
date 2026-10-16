@@ -1,6 +1,6 @@
 import {spawn,execFile,execFileSync} from 'node:child_process';
 import {promisify} from 'node:util';
-import {mkdtempSync,existsSync,readFileSync,openSync,closeSync,writeFileSync,mkdirSync,readdirSync,statfsSync} from 'node:fs';
+import {mkdtempSync,copyFileSync,existsSync,readFileSync,openSync,closeSync,writeFileSync,mkdirSync,readdirSync,statfsSync} from 'node:fs';
 import {tmpdir} from 'node:os';
 import {join,resolve,dirname} from 'node:path';
 import assert from 'node:assert/strict';
@@ -56,10 +56,11 @@ try{
  }
  let installerClose;
  if(process.platform==='win32'&&!process.argv[3]){
-  // Exercise the same guard used by NSIS against a real, running installed shell.
-  await promisify(execFile)(join(process.env.SystemRoot,'System32','WindowsPowerShell','v1.0','powershell.exe'),
-   ['-NoLogo','-NoProfile','-NonInteractive','-ExecutionPolicy','Bypass','-File',resolve('src-tauri/windows/prepare-install.ps1'),'-InstallDir',dirname(executable)],
-   {env:shellEnv,timeout:90000});
+  // Exercise the same native guard used by NSIS against a real, running installed
+  // shell; like the installer, run a copy from outside the installation.
+  const guard=join(mkdtempSync(join(tmpdir(),'biank-guard-')),'biank-guard.exe');
+  copyFileSync(executable,guard);
+  await promisify(execFile)(guard,['--prepare-install',dirname(executable)],{env:shellEnv,timeout:90000});
   connection=undefined;
   const closedDeadline=Date.now()+10000;
   while(child.exitCode===null&&Date.now()<closedDeadline)await new Promise(r=>setTimeout(r,100));

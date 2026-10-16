@@ -1,5 +1,6 @@
 pub mod engine;
 mod imports;
+pub mod install_guard;
 mod installed_smoke;
 mod resources;
 pub mod transport;

@@ -136,8 +136,8 @@ if ($Child) {
         $receipt.stage = 'dependency-nsis'
         if (!(Test-Path 'C:/Program Files (x86)/NSIS/makensis.exe')) { throw 'NSIS must be prepared by parent' }
         $receipt.nsis_available = $true
-        foreach ($name in 'windows-installer-guard.test.ps1','windows-installer-hook.test.ps1') {
-            $receipt.stage = if ($name -eq 'windows-installer-guard.test.ps1') { 'dependency-process-harness' } else { 'dependency-nsis-harness' }
+        foreach ($name in @('windows-installer-hook.test.ps1')) {
+            $receipt.stage = 'dependency-nsis-harness'
             if (!(Test-Path (Join-Path $PSScriptRoot $name))) { throw 'Missing existing harness' }
         }
         $receipt.harnesses_available = $true
@@ -154,9 +154,6 @@ if ($Child) {
         if ($LASTEXITCODE -ne 0 -or $nodeVersion -notmatch '^v22\.') { throw 'Node22 required' }
         $receipt.node22_verified = $true
         Set-Location $repo
-        $receipt.stage = 'existing-process-file-guard'
-        & (Join-Path $PSScriptRoot 'windows-installer-guard.test.ps1') -NodeExecutable $node *> $null
-        $receipt.process_file_guard = $true
         $receipt.stage = 'existing-nsis-hook'
         & (Join-Path $PSScriptRoot 'windows-installer-hook.test.ps1') *> $null
         $receipt.nsis_hook = $true

@@ -50,4 +50,4 @@ Los scripts de empaquetado, staging, firma y verificación viven en `tools/`:
   - `tools/bridge.js` — Bridge first-party inyectado en el webview principal de Tauri (`window.biankDesktop`, `window.biankBrowser`).
   - `tools/qa-bridge.js` — Sonda de diagnóstico inyectada únicamente en corridas aisladas de QA/debug, nunca en releases.
 - **Tests de herramientas (`tools/*.test.*`)**:
-  - `tools/auth-bridge.test.mjs`, `tools/runtime-links.test.mjs`, `tools/startup.test.mjs`, `tools/windows-installer-guard.test.ps1`, `tools/windows-installer-hook.test.ps1`.
+  - `tools/auth-bridge.test.mjs`, `tools/runtime-links.test.mjs`, `tools/startup.test.mjs`, `tools/windows-installer-hook.test.ps1` (guarda nativa `src-tauri/src/install_guard.rs` vía hooks NSIS).
