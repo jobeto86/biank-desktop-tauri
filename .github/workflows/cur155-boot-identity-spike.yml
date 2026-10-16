@@ -1,0 +1,45 @@
+name: CUR-155 Windows boot identity spike
+on:
+  push:
+    branches: [test/cur155-boot-identity-spike]
+    paths:
+      - tools/spikes/cur155-boot-identity/**
+      - .github/workflows/cur155-boot-identity-spike.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  boot-identity:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-2022, windows-2025]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Compile independent Rust spike (no private core or application build)
+        shell: pwsh
+        run: |
+          rustc --version
+          rustc --edition 2021 -D warnings tools/spikes/cur155-boot-identity/main.rs -o boot-identity-spike.exe
+          if ($LASTEXITCODE -ne 0) { throw 'Spike compile failed' }
+          rustc --edition 2021 -D warnings --test tools/spikes/cur155-boot-identity/main.rs -o boot-identity-tests.exe
+          if ($LASTEXITCODE -ne 0) { throw 'Spike tests compile failed' }
+      - name: Native API, ABI and fail-closed tests
+        shell: pwsh
+        run: |
+          ./boot-identity-tests.exe --nocapture
+          if ($LASTEXITCODE -ne 0) { throw 'Native spike tests failed' }
+          node tools/spikes/cur155-boot-identity/validate.mjs ./boot-identity-spike.exe ./boot-identity-receipt.json
+          if ($LASTEXITCODE -ne 0) { throw 'Native spike validation failed' }
+      - name: Retain exact binary and evidence for lifecycle testing
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cur155-boot-identity-${{ matrix.os }}
+          path: |
+            boot-identity-spike.exe
+            boot-identity-receipt.json
+          if-no-files-found: error
+          retention-days: 14
