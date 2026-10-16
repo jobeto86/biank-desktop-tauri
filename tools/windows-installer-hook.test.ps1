@@ -20,6 +20,11 @@ Section
   FileOpen `$2 "`$INSTDIR\installed-proof.txt" w
   FileWrite `$2 "accepted"
   FileClose `$2
+  WriteUninstaller "`$INSTDIR\uninstall.exe"
+SectionEnd
+Section Uninstall
+  !insertmacro NSIS_HOOK_PREUNINSTALL
+  Delete "`$INSTDIR\uninstall.exe"
 SectionEnd
 "@ | Set-Content $script
 New-Item -ItemType Directory -Path $destination -Force | Out-Null
@@ -27,6 +32,15 @@ New-Item -ItemType Directory -Path $destination -Force | Out-Null
 if ($LASTEXITCODE -ne 0) { throw 'NSIS hook compilation failed' }
 $result = Start-Process $output -ArgumentList '/S' -Wait -PassThru
 if ($result.ExitCode -ne 0 -or !(Test-Path "$destination/installed-proof.txt")) { throw 'Clean installation guard failed' }
+Remove-Item "$destination/installed-proof.txt"
+# An orphaned runtime process from a removed version no longer dead-ends the install.
+Copy-Item (Get-Command node).Source "$destination/node.exe"
+$orphan = Start-Process "$destination/node.exe" -ArgumentList '-e','setInterval(()=>{},1000)' -PassThru
+try {
+  $result = Start-Process $output -ArgumentList '/S' -Wait -PassThru
+  if ($result.ExitCode -ne 0 -or !(Test-Path "$destination/installed-proof.txt")) { throw 'Orphan runtime blocked the installation' }
+  if (!$orphan.HasExited) { throw 'Orphan runtime survived the installer' }
+} finally { if (!$orphan.HasExited) { $orphan.Kill() } }
 Remove-Item "$destination/installed-proof.txt"
 $locked = [IO.File]::Open("$destination/blocked.dll",[IO.FileMode]::Create,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None)
 try {
