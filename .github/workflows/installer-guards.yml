@@ -3,7 +3,9 @@ on:
   push:
     paths:
       - src-tauri/windows/**
-      - tools/windows-installer-*.test.ps1
+      - src-tauri/src/install_guard.rs
+      - src-tauri/src/main.rs
+      - tools/windows-installer-hook.test.ps1
       - .github/workflows/installer-guards.yml
   workflow_dispatch:
 permissions:
@@ -11,17 +13,24 @@ permissions:
 jobs:
   guards:
     runs-on: windows-latest
-    timeout-minutes: 10
+    timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
         with:
           persist-credentials: false
-      - uses: actions/setup-node@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
         with:
-          node-version: '22'
-      - name: Process, file and legacy guards
+          workspaces: src-tauri
+      - name: Placeholder runtime (the guard does not need the private core)
         shell: pwsh
-        run: ./tools/windows-installer-guard.test.ps1
-      - name: NSIS hook under Windows PowerShell
+        run: |
+          New-Item -ItemType Directory -Force src-tauri/runtime | Out-Null
+          if (!(Test-Path src-tauri/runtime/resources-manifest.json)) { Set-Content src-tauri/runtime/resources-manifest.json '{}' }
+      - name: Native guard contract
+        run: cargo test --manifest-path src-tauri/Cargo.toml --locked install_guard -- --test-threads=1
+      - name: Build shell binary
+        run: cargo build --manifest-path src-tauri/Cargo.toml --locked
+      - name: NSIS hooks with the native guard
         shell: pwsh
-        run: ./tools/windows-installer-hook.test.ps1
+        run: ./tools/windows-installer-hook.test.ps1 -GuardExecutable src-tauri/target/debug/biank-desktop.exe

@@ -135,12 +135,6 @@ jobs:
         env:
           BIANK_TAURI_PUBLIC_KEY: ${{ vars.BIANK_TAURI_PUBLIC_KEY }}
         run: npm run configure:updater
-      - name: Check Windows installer process and file guards
-        if: runner.os == 'Windows'
-        shell: pwsh
-        run: |
-          ./tools/windows-installer-guard.test.ps1
-          ./tools/windows-installer-hook.test.ps1
       - name: Check native contracts
         run: cargo test --manifest-path src-tauri/Cargo.toml --locked
       - name: Build unsigned QA installer
@@ -154,6 +148,10 @@ jobs:
           export BIANK_TAURI_TEST_RESOURCE_ROOT="$RUNNER_TEMP/Biank-Isolated-Resources"
           if [[ "$RUNNER_OS" == Windows ]]; then executable=src-tauri/target/debug/biank-desktop.exe; else executable=src-tauri/target/debug/biank-desktop; fi
           node tools/validate-installed.mjs "$executable" "$BIANK_TAURI_TEST_RESOURCE_ROOT/runtime"
+      - name: Check native installer guard through the NSIS hooks
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: ./tools/windows-installer-hook.test.ps1 -GuardExecutable src-tauri/target/debug/biank-desktop.exe
       - name: Build updater-signed artifacts
         if: inputs.signed
         env:
